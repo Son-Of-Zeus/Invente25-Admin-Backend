@@ -48,6 +48,7 @@ async function loginHandler(req, res) {
     }
     // We do not allow changing after first save in UI; backend will simply upsert for idempotency
     let assignedBy = null;
+    let validEventId = null;
     {
       // Enforce institution email domain
       const lower = String(personalEmail).toLowerCase();
@@ -76,14 +77,17 @@ async function loginHandler(req, res) {
       }
 
       // If admin is an event_admin, validate provided eventId exists
-      let validEventId = null;
       if (admin.role === 'event_admin') {
         if (!eventId) {
           return res.status(400).json({ error: 'event_id required for event_admin profile' });
         }
-        const ev = await db.query('SELECT external_id FROM events WHERE external_id=$1', [Number(eventId)]);
+        const ev = await db.query('SELECT external_id, department_id FROM events WHERE external_id=$1', [Number(eventId)]);
         if (ev.rows.length === 0) {
           return res.status(400).json({ error: 'invalid event_id for event_admin' });
+        }
+        // ensure event belongs to admin's department
+        if (admin.department_id == null || Number(ev.rows[0].department_id) !== Number(admin.department_id)) {
+          return res.status(403).json({ error: 'event_admin can only select event in their department' });
         }
         validEventId = Number(eventId);
       }

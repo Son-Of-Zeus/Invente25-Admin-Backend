@@ -10,12 +10,12 @@ const router = express.Router();
 
 router.post('/', 
   authMiddleware, 
-  requireRole(['volunteer', 'dept_admin', 'super_admin']),
+  requireRole(['volunteer', 'super_admin']),
   async (req, res) => {
-    const { emailID, name, phoneNumber, workshops } = req.body;
+    const { emailID, name, phoneNumber, institution, paymentMethod, workshops } = req.body;
 
     // Basic validation
-    if (!emailID || !name || !phoneNumber || !Array.isArray(workshops)) {
+    if (!emailID || !name || !phoneNumber || !institution || !paymentMethod || !Array.isArray(workshops)) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -99,6 +99,7 @@ router.post('/',
         name,
         paymentID,
         phoneNumber,
+        institution,
         createdAt: timestamp,
         eventBookingDetails,
         type: "w",
@@ -112,7 +113,7 @@ router.post('/',
         emailID,
         paymentID,
         paidOn: timestamp,
-        method: "Cash",
+        method: paymentMethod,
         amount,
         phoneNumber
       });

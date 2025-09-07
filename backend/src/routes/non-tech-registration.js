@@ -10,12 +10,12 @@ const router = express.Router();
 
 router.post('/', 
   authMiddleware, 
-  requireRole(['volunteer', 'dept_admin', 'super_admin']),
+  requireRole(['volunteer', 'super_admin']),
   async (req, res) => {
-    const { emailID, name, phoneNumber, events } = req.body;
+    const { emailID, name, phoneNumber, institution, paymentMethod, events } = req.body;
 
     // Basic validation
-    if (!emailID || !name || !phoneNumber || !Array.isArray(events)) {
+    if (!emailID || !name || !phoneNumber || !institution || !paymentMethod || !Array.isArray(events)) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -51,6 +51,8 @@ router.post('/',
       // Check department access permissions
       if (req.user.role === 'dept_admin' || (req.user.role === 'volunteer' && req.user.department_id)) {
         // Department-specific roles can only register for events from their department
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'You are not authorized to register for non-technical events' });
         const userDeptId = req.user.department_id;
         const userDeptEvents = validEvents.rows.filter(event => event.department_id === userDeptId);
         
@@ -90,6 +92,7 @@ router.post('/',
         name,
         paymentID,
         phoneNumber,
+        institution,
         createdAt: timestamp,
         eventBookingDetails,
         type: "n",
@@ -103,7 +106,7 @@ router.post('/',
         emailID,
         paymentID,
         paidOn: timestamp,
-        method: "Cash",
+        method: paymentMethod,
         amount,
         phoneNumber
       });

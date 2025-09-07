@@ -1,8 +1,78 @@
 // routes/scan.js
 const express = require('express');
 const db = require('../db');
-const {authMiddleware} = require('../auth');
+const {authMiddleware, requireRole} = require('../auth');
 const router = express.Router();
+
+// NEW ENDPOINT: Find all passes by user email
+router.get('/scan/by-email/:email', authMiddleware, async (req, res) => {
+  const { email } = req.params;
+
+  try {
+    const isSuperOrCentral = req.user.role === 'super_admin' || (req.user.role === 'volunteer' && !req.user.department_id);
+
+    // 1. Fetch all pass types associated with the email
+    const passesPromise = db.query('SELECT * FROM passes WHERE user_email=$1', [email]);
+    const hackLeaderPromise = db.query('SELECT * FROM hack_passes WHERE leader_email=$1', [email]);
+    const hackMemberPromise = db.query(
+      `SELECT hp.* FROM hack_passes hp
+       JOIN hack_reg_details hrd ON hp.team_id = hrd.team_id
+       WHERE hrd.email = $1`,
+      [email]
+    );
+
+    const [passesRes, hackLeaderRes, hackMemberRes] = await Promise.all([
+      passesPromise,
+      hackLeaderPromise,
+      hackMemberPromise,
+    ]);
+
+    // 2. Consolidate and deduplicate passes
+    const allPasses = new Map();
+    passesRes.rows.forEach(p => allPasses.set(p.pass_id, { passType: detectPassType(p.pass_id), pass: p }));
+    hackLeaderRes.rows.forEach(p => allPasses.set(p.team_id, { passType: 'hackathon', pass: p }));
+    hackMemberRes.rows.forEach(p => allPasses.set(p.team_id, { passType: 'hackathon', pass: p }));
+
+    // 3. Enrich and filter passes
+    const enrichedPasses = [];
+    for (const [passId, passInfo] of allPasses.entries()) {
+      if (passInfo.passType === 'technical') {
+        const slotsRes = await db.query(
+          `SELECT s.slot_no, s.event_id, s.attended, e.name as event_name 
+           FROM slots s
+           LEFT JOIN events e ON s.event_id = e.external_id
+           WHERE s.pass_id = $1 ORDER BY s.slot_no`,
+          [passId]
+        );
+        enrichedPasses.push({ ...passInfo, slots: slotsRes.rows });
+      } else if (passInfo.passType === 'non-technical' || passInfo.passType === 'workshop') {
+        const slotRes = await db.query(
+          `SELECT s.slot_no, s.event_id, s.attended, e.name as event_name, e.department_id, e.event_type
+           FROM slots s
+           JOIN events e ON s.event_id = e.external_id
+           WHERE s.pass_id = $1 LIMIT 1`,
+          [passId]
+        );
+        if (slotRes.rows.length > 0) {
+          const event = slotRes.rows[0];
+          // Permission Check (Option A): Only include if admin has access
+          if (isSuperOrCentral || event.department_id === req.user.department_id) {
+            enrichedPasses.push({ ...passInfo, event });
+          }
+        }
+      } else if (passInfo.passType === 'hackathon') {
+        const teamMembersRes = await db.query('SELECT email, full_name, institution FROM hack_reg_details WHERE team_id=$1', [passId]);
+        // Hackathons are central, so always visible
+        enrichedPasses.push({ ...passInfo, teamMembers: teamMembersRes.rows });
+      }
+    }
+
+    res.json({ userEmail: email, passes: enrichedPasses });
+  } catch (err) {
+    console.error('GET /scan/by-email/:email error', err);
+    res.status(500).json({ error: 'Server error while searching for passes' });
+  }
+});
 
 // Helper function to detect pass type from passId
 function detectPassType(passId) {
@@ -215,50 +285,48 @@ router.post('/scan/:passId/assign', authMiddleware, async (req, res) => {
 });
 
 // Mark attendance for a slot
-router.post('/scan/:passId/attend', authMiddleware, async (req, res) => {
+router.post('/scan/:passId/attend', authMiddleware, requireRole(['event_admin','super_admin']), async (req, res) => {
   const { passId } = req.params;
   const { slot_no } = req.body;
   const passType = detectPassType(passId);
 
   // Volunteers can view attendance data but cannot mark attendance
-  if (!(req.user.role === 'super_admin' || req.user.role === 'dept_admin' || req.user.role === 'event_admin')) {
+  if (!(req.user.role === 'super_admin' ||req.user.role === 'event_admin')) {
     return res.status(403).json({ error: 'unauthorized to mark attendance' });
   }
 
-  try {
-    if (passType === 'technical') {
-      // Handle technical events (existing behavior)
-      if (!slot_no) {
-        return res.status(400).json({ error: 'slot_no is required for technical events' });
-      }
-
-      // First verify the pass exists
-      const passRes = await db.query(
-        'SELECT pass_id FROM passes WHERE pass_id=$1',
-        [passId]
-      );
-      if (passRes.rows.length === 0) {
-        return res.status(404).json({ error: 'pass not found' });
-      }
-
-      // For non-super-admins and non-central-volunteers, verify the slot belongs to their department
-      if (req.user.role !== 'super_admin' && !(req.user.role === 'volunteer' && !req.user.department_id)) {
-        const slotDeptCheck = await db.query(
-          `SELECT e.department_id 
-           FROM slots s 
-           JOIN events e ON s.event_id = e.external_id 
-           WHERE s.pass_id = $1 AND s.slot_no = $2`,
-          [passId, slot_no]
-        );
-        
-        if (slotDeptCheck.rows.length === 0) {
-          return res.status(404).json({ error: 'slot not found' });
-        }
-        
-        if (slotDeptCheck.rows[0].department_id !== req.user.department_id) {
-          return res.status(403).json({ error: 'unauthorized to mark attendance for this department' });
-        }
-      }
+      try {
+        if (passType === 'technical') {
+          if (!slot_no) return res.status(400).json({ error: 'slot_no is required' });
+          
+          // First verify the pass exists
+          const passRes = await db.query(
+            'SELECT pass_id FROM passes WHERE pass_id=$1',
+            [passId]
+          );
+          if (passRes.rows.length === 0) {
+            return res.status(404).json({ error: 'pass not found' });
+          }
+          const slotCheck = await db.query(
+            `SELECT e.department_id, e.external_id as event_id 
+             FROM slots s JOIN events e ON s.event_id = e.external_id 
+             WHERE s.pass_id = $1 AND s.slot_no = $2`,
+            [passId, slot_no]
+          );
+          if (slotCheck.rows.length === 0) return res.status(404).json({ error: 'Slot not found' });
+          const slot = slotCheck.rows[0];
+    
+          // *** PERMISSION CHECK ADDED/MODIFIED HERE ***
+          if (req.user.role === 'event_admin') {
+            if (!req.user.event_id) return res.status(403).json({ error: 'Forbidden: No event assigned to your account' });
+            if (Number(slot.event_id) !== Number(req.user.event_id)) {
+              return res.status(403).json({ error: 'Forbidden: You can only mark attendance for your own event' });
+            }
+          } else if (req.user.role === 'dept_admin') {
+            if (slot.department_id !== req.user.department_id) {
+              return res.status(403).json({ error: 'Unauthorized to mark attendance for this department' });
+            }
+          }
 
       // Then update the attendance
       const updateRes = await db.query(
@@ -299,9 +367,14 @@ router.post('/scan/:passId/attend', authMiddleware, async (req, res) => {
       const slot = slotRes.rows[0];
 
       // Check department access for non-super-admins and non-central-volunteers
-      if (req.user.role !== 'super_admin' && !(req.user.role === 'volunteer' && !req.user.department_id)) {
+      if (req.user.role === 'event_admin') {
+        if (!req.user.event_id) return res.status(403).json({ error: 'Forbidden: No event assigned to your account' });
+        if (Number(slot.event_id) !== Number(req.user.event_id)) {
+          return res.status(403).json({ error: 'Forbidden: You can only mark attendance for your own event' });
+        }
+      } else if (req.user.role === 'dept_admin') {
         if (slot.department_id !== req.user.department_id) {
-          return res.status(403).json({ error: 'unauthorized to mark attendance for this department' });
+          return res.status(403).json({ error: 'Unauthorized to mark attendance for this department' });
         }
       }
 

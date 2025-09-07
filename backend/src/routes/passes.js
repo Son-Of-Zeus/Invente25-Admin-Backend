@@ -28,7 +28,7 @@ router.get('/', authMiddleware, requireRole(['volunteer','dept_admin','super_adm
 
 // Assign a slot to a pass (idempotent check for duplicate event on pass)
 // Roles allowed: volunteer, dept_admin, super_admin
-router.post('/:passId/slots', authMiddleware, requireRole(['volunteer','dept_admin','super_admin']), async (req, res) => {
+router.post('/:passId/slots', authMiddleware, requireRole(['volunteer','dept_admin','event_admin','super_admin']), async (req, res) => {
   const { passId } = req.params;
   const { slot_no, event_id } = req.body;
 
@@ -96,6 +96,18 @@ router.post('/:passId/slots', authMiddleware, requireRole(['volunteer','dept_adm
       }
     }
 
+    // Enforce event_admin scoping: can only assign their specific event
+    if (req.user.role === 'event_admin') {
+      if (!req.user.event_id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'forbidden: no event assigned' });
+      }
+      if (Number(req.user.event_id) !== Number(evId)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'forbidden: can only assign their own event' });
+      }
+    }
+
     // Prevent duplicate event on same pass
     const existingSameEvent = (await client.query(
       'SELECT 1 FROM slots WHERE pass_id = $1 AND event_id = $2 LIMIT 1',
@@ -139,8 +151,8 @@ router.post('/:passId/slots', authMiddleware, requireRole(['volunteer','dept_adm
   }
 });
 
-// mark attendance (event_admin, dept_admin, super_admin)
-router.post('/:passId/attendance', authMiddleware, requireRole(['event_admin','dept_admin','super_admin']), async (req, res) => {
+// mark attendance (event_admin, super_admin only)
+router.post('/:passId/attendance', authMiddleware, requireRole(['event_admin','super_admin']), async (req, res) => {
   const { passId } = req.params;
   const { event_id, attended } = req.body;
   if (!event_id) return res.status(400).json({ error: 'event_id required' });
