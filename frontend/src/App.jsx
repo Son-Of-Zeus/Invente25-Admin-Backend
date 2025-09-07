@@ -64,7 +64,7 @@ export default function App() {
               path="/attendance"
               element={
                 <RequireAuth
-                  roles={["volunteer", "event_admin", "dept_admin", "super_admin"]}
+                  roles={["event_admin", "super_admin"]}
                 >
                   <AttendancePage />
                 </RequireAuth>
@@ -73,7 +73,7 @@ export default function App() {
             <Route
               path="/analytics"
               element={
-                <RequireAuth roles={["dept_admin", "super_admin"]}>
+                <RequireAuth roles={["event_admin", "dept_admin", "super_admin"]}>
                   <AnalyticsPage />
                 </RequireAuth>
               }
@@ -81,7 +81,7 @@ export default function App() {
             <Route
               path="/tech-registration"
               element={
-                <RequireAuth roles={["volunteer", "dept_admin", "super_admin"]}>
+                <RequireAuth roles={["volunteer", "super_admin"]}>
                   <TechRegistrationPage />
                 </RequireAuth>
               }
@@ -89,7 +89,7 @@ export default function App() {
             <Route
               path="/workshop-registration"
               element={
-                <RequireAuth roles={["volunteer", "dept_admin", "super_admin"]}>
+                <RequireAuth roles={["volunteer", "super_admin"]}>
                   <WorkshopRegistrationPage />
                 </RequireAuth>
               }
@@ -105,7 +105,7 @@ export default function App() {
             <Route
               path="/non-tech-registration"
               element={
-                <RequireAuth roles={["volunteer", "dept_admin", "super_admin"]}>
+                <RequireAuth roles={["volunteer", "super_admin"]}>
                   <NonTechRegistrationPage />
                 </RequireAuth>
               }

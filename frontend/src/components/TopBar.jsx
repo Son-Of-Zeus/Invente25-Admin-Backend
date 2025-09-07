@@ -30,15 +30,16 @@ export default function TopBar() {
   };
 
   // Define roles for clarity and to reduce repetition
-  const registrationRoles = ["volunteer", "dept_admin", "super_admin"];
-  const attendanceRoles = ["event_admin", "dept_admin", "super_admin"];
-  const analyticsRoles = ["dept_admin", "super_admin"];
+  const registrationRoles = ["volunteer", "super_admin"];
+  const attendanceRoles = ["event_admin", "super_admin"];
+  const analyticsRoles = ["event_admin", "dept_admin", "super_admin"];
+  const scanRoles = ["volunteer", "dept_admin", "event_admin", "super_admin"];
 
   // The navigation links are defined once and reused for both desktop and mobile views
   const navLinks = (
     <>
       <NavLink to="/" user={user}>Home</NavLink>
-      <NavLink to="/scan" requiredRoles={registrationRoles} user={user}>Scan</NavLink>
+      <NavLink to="/scan" requiredRoles={scanRoles} user={user}>Scan</NavLink>
       <NavLink to="/attendance" requiredRoles={attendanceRoles} user={user}>Attendance</NavLink>
       <NavLink to="/analytics" requiredRoles={analyticsRoles} user={user}>Analytics</NavLink>
       <NavLink to="/tech-registration" requiredRoles={registrationRoles} user={user}>Tech Registration</NavLink>

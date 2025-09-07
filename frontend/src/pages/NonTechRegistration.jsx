@@ -30,6 +30,8 @@ export default function NonTechRegistration() {
     emailID: '',
     name: '',
     phoneNumber: '',
+    institution: '',
+    paymentMethod: 'cash',
     selectedEventId: null
   };
 
@@ -97,6 +99,8 @@ export default function NonTechRegistration() {
         emailID: formData.emailID,
         name: formData.name,
         phoneNumber: formData.phoneNumber,
+        institution: formData.institution,
+        paymentMethod: formData.paymentMethod,
         events: eventData
       });
 
@@ -213,6 +217,40 @@ export default function NonTechRegistration() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
                     placeholder="Enter your phone number"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="col-span-1">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                    <BuildingOffice2Icon className="h-4 w-4" />
+                    Institution
+                  </label>
+                  <input 
+                    type="text" 
+                    name="institution" 
+                    value={formData.institution} 
+                    onChange={handleInputChange} 
+                    required 
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                    placeholder="Enter your institution name"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                    <CurrencyRupeeIcon className="h-4 w-4" />
+                    Payment Method
+                  </label>
+                  <select 
+                    name="paymentMethod" 
+                    value={formData.paymentMethod} 
+                    onChange={handleInputChange} 
+                    required 
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="upi">UPI</option>
+                  </select>
                 </div>
               </div>
             </div>

@@ -64,7 +64,10 @@ export default function AnalyticsPage() {
     setLoading(true)
     setErr(null)
     try {
-      if (user?.role === 'dept_admin') {
+      if (user?.role === 'event_admin') {
+        const resp = await authAxios.get(`/analytics/event`);
+        setStats({ scope: 'event', data: resp.data })
+      } else if (user?.role === 'dept_admin') {
         const id = user.department_id
         const resp = await authAxios.get(`/analytics/department/${id}`)
         setStats({ scope: 'department', data: resp.data })
@@ -126,6 +129,63 @@ export default function AnalyticsPage() {
   )
   
   if (!stats) return <div className="p-6">No analytics available</div>
+
+  // Event view for event_admin
+  if (stats.scope === 'event') {
+    const d = stats.data
+    return (
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold">Event Analytics — {d.event?.name} (ID: {d.event?.external_id})</h2>
+          <div className="text-sm text-gray-500">Last updated: {refreshTime.toLocaleTimeString()}</div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="text-sm text-gray-500 mb-1">Registrations</div>
+            <div className="text-3xl font-bold text-blue-600">{fmt(d.totals.registrations)}</div>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="text-sm text-gray-500 mb-1">Attendance</div>
+            <div className="text-3xl font-bold text-green-600">{fmt(d.totals.attendance)}</div>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="text-sm text-gray-500 mb-1">Attendance Rate</div>
+            <div className="text-3xl font-bold text-orange-600">{d.totals.registrations > 0 ? Math.round((d.totals.attendance / d.totals.registrations) * 100) : 0}%</div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="p-6 border-b">
+            <h3 className="text-lg font-semibold">Recent Registrations</h3>
+            <div className="text-sm text-gray-600 mt-1">Last 100 slot updates</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pass</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Slot</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attended</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {d.recent_slots.map(r => (
+                  <tr key={`${r.pass_id}-${r.slot_no}`} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.pass_id}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.slot_no}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.attended ? 'Yes' : 'No'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(r.created_at).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // Department view
   if (stats.scope === 'department') {

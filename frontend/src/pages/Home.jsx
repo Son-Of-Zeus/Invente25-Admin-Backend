@@ -16,8 +16,9 @@ export default function Home() {
   const role = user?.role || null;
 
   // Define roles to avoid repetition
-  const registrationRoles = ["volunteer", "dept_admin", "super_admin"];
+  const registrationRoles = ["volunteer", "super_admin"];
   const adminRoles = ["dept_admin", "super_admin"];
+  const scanRoles = ["volunteer", "dept_admin", "event_admin", "super_admin"];
 
   // Add an `icon` property to each card
   const cards = [
@@ -25,21 +26,21 @@ export default function Home() {
       title: "Scan Pass",
       desc: "Scan QR codes to view slots and participant details.",
       to: "/scan",
-      roles: registrationRoles,
+      roles: scanRoles,
       icon: QrCodeIcon,
     },
     {
       title: "Attendance",
       desc: "Mark attendance for specific events and workshops.",
       to: "/attendance",
-      roles: ["event_admin", ...adminRoles],
+      roles: ["event_admin", "super_admin"],
       icon: UserGroupIcon,
     },
     {
       title: "Analytics",
       desc: "View department and college registration statistics.",
       to: "/analytics",
-      roles: adminRoles,
+      roles: ["event_admin", ...adminRoles],
       icon: ChartBarIcon,
     },
     {

@@ -27,10 +27,10 @@ export function AuthProvider({ children }) {
     if (user) localStorage.setItem("user", JSON.stringify(user));
   }, [user]);
 
-  const login = async (email, password) => {
+  const login = async (email, password, profile = {}) => {
     const resp = await axios.post(
       `${import.meta.env.VITE_API_BASE || "http://localhost:4000"}/auth/login`,
-      { email, password }
+      { email, password, ...profile }
     );
     const t = resp.data.token;
     const payload = JSON.parse(atob(t.split(".")[1]));
@@ -39,6 +39,8 @@ export function AuthProvider({ children }) {
       email: payload.email,
       role: payload.role,
       department_id: payload.department_id,
+      assigned_by: payload.assigned_by || null,
+      event_id: payload.event_id || null,
     });
     return { token: t, user: payload };
   };
