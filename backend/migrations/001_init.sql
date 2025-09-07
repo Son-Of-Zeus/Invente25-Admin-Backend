@@ -6,7 +6,8 @@ CREATE TABLE users ( -- participants
   email TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   phone TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  institution TEXT
 );
 
 -- pre-filled by seed script
@@ -41,10 +42,11 @@ CREATE TABLE receipts (
 
 CREATE TABLE passes (
   pass_id TEXT PRIMARY KEY, -- this is uuidv4 rn, gotta change to uuid7 later
-  user_email TEXT REFERENCES users(email),
-  payment_id VARCHAR(100) REFERENCES receipts(payment_id), 
+  user_email TEXT,
+  payment_id VARCHAR(100) , 
   ticket_issued BOOLEAN DEFAULT FALSE, -- whether qr code has been sent 
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  assigned_by TEXT
 );
 
 CREATE TABLE slots ( -- separated this out from events to have the attended field 
@@ -53,7 +55,8 @@ CREATE TABLE slots ( -- separated this out from events to have the attended fiel
   event_id INT REFERENCES events(external_id),
   attended BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- changed to created_at doneee
-  PRIMARY KEY (pass_id, slot_no)
+  PRIMARY KEY (pass_id, slot_no),
+  assigned_by TEXT
 );
 
 -- also pre-filled by seed script
@@ -65,6 +68,32 @@ CREATE TABLE admins (
   department_id INT NULL, --in case of dept_admin - we ensure they can access stats of only their dept's events
   created_at TIMESTAMPTZ DEFAULT now()
 );
+-- new table of individual admins that contains personal email, name, phone, department_id, role
+
+
+-- Individual admin profiles for tracking who performed actions
+-- personal_email is used as the primary key for deduplication and re-login
+CREATE TABLE IF NOT EXISTS admin_profiles (
+  personal_email TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT,
+  role TEXT NOT NULL, -- volunteer | event_admin | dept_admin | super_admin
+  event_id INT NULL REFERENCES events(external_id), -- only for event_admins; null otherwise
+  admin_email TEXT NOT NULL REFERENCES admins(email), -- email used to authenticate against admins table
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_admin_email ON admin_profiles(admin_email);
+
+-- OTPs for admin profile verification
+CREATE TABLE IF NOT EXISTS admin_otps (
+  personal_email TEXT PRIMARY KEY,
+  otp TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 
 CREATE INDEX ON events(external_id);
 CREATE INDEX ON slots(event_id); -- for quicker analytics later on

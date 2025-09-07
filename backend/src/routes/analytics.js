@@ -5,6 +5,48 @@ const { authMiddleware, requireRole } = require('../auth');
 const XLSX = require('xlsx');
 
 const router = express.Router();
+// Event-level analytics for event_admin (their event only) and super_admin (any event via query)
+router.get('/event', authMiddleware, requireRole(['event_admin','super_admin']), async (req, res) => {
+  try {
+    let eventId;
+    if (req.user.role === 'event_admin') {
+      if (!req.user.event_id) return res.status(403).json({ error: 'no event assigned' });
+      eventId = Number(req.user.event_id);
+    } else {
+      eventId = Number(req.query.event_id);
+      if (Number.isNaN(eventId)) return res.status(400).json({ error: 'event_id required' });
+    }
+
+    const eventRow = (await db.query('SELECT external_id, name, event_type, cost, department_id FROM events WHERE external_id=$1', [eventId])).rows[0];
+    if (!eventRow) return res.status(404).json({ error: 'event not found' });
+
+    const regRow = (await db.query(`
+      SELECT COUNT(*)::int AS registrations,
+             COALESCE(SUM(CASE WHEN attended THEN 1 ELSE 0 END),0)::int AS attendance
+      FROM slots WHERE event_id = $1
+    `, [eventId])).rows[0];
+
+    const recent = (await db.query(`
+      SELECT s.pass_id, s.slot_no, s.attended, s.created_at
+      FROM slots s
+      WHERE s.event_id = $1
+      ORDER BY s.created_at DESC
+      LIMIT 100
+    `, [eventId])).rows;
+
+    return res.json({
+      event: eventRow,
+      totals: {
+        registrations: regRow.registrations,
+        attendance: regRow.attendance
+      },
+      recent_slots: recent
+    });
+  } catch (err) {
+    console.error('analytics/event error', err);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
 
 // Enhanced Department analytics
 router.get('/department/:id', authMiddleware, requireRole(['dept_admin','super_admin']), async (req, res) => {

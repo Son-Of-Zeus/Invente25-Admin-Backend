@@ -5,6 +5,22 @@ const { authMiddleware } = require('../auth');
 
 const router = express.Router();
 
+// public listing for login dropdown (no auth)
+router.get('/public', async (req, res) => {
+  try {
+    const rows = (await db.query(`
+      SELECT e.external_id, e.name, e.department_id, d.name AS department_name, e.event_type
+      FROM events e
+      LEFT JOIN departments d ON e.department_id = d.id
+      ORDER BY e.name
+    `)).rows;
+    return res.json({ rows });
+  } catch (err) {
+    console.error('GET /events/public error', err);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
 // list events, optional filter by department_id
 router.get('/', authMiddleware, async (req, res) => {
   try {

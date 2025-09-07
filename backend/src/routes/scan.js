@@ -146,7 +146,7 @@ router.post('/scan/:passId/assign', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'slot_no and event_id are required' });
   }
 
-  if (!['super_admin', 'dept_admin', 'volunteer'].includes(req.user.role)) {
+  if (!['super_admin', 'dept_admin', 'volunteer', 'event_admin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'unauthorized to assign events' });
   }
 
@@ -169,8 +169,14 @@ router.post('/scan/:passId/assign', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'event not found' });
     }
 
-    // For non-super-admins and non-central-volunteers, verify the event belongs to their department
-    if (req.user.role !== 'super_admin' && !(req.user.role === 'volunteer' && !req.user.department_id)) {
+    // If event_admin, restrict to their specific event only
+    if (req.user.role === 'event_admin') {
+      if (!req.user.event_id) return res.status(403).json({ error: 'forbidden: no event assigned' });
+      if (Number(req.user.event_id) !== Number(event_id)) {
+        return res.status(403).json({ error: 'forbidden: can only assign their own event' });
+      }
+    } else if (req.user.role !== 'super_admin' && !(req.user.role === 'volunteer' && !req.user.department_id)) {
+      // For non-super-admins and non-central-volunteers, verify the event belongs to their department
       if (eventRes.rows[0].department_id !== req.user.department_id) {
         return res.status(403).json({ error: 'unauthorized to assign events from other departments' });
       }

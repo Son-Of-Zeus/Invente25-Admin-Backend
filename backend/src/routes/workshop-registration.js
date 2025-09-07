@@ -101,7 +101,8 @@ router.post('/',
         phoneNumber,
         createdAt: timestamp,
         eventBookingDetails,
-        type: "w"
+        type: "w",
+        assigned_by: req.user?.assigned_by || null
       }, {
         headers: paymentHeaders
       });

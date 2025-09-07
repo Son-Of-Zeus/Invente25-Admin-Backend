@@ -6,6 +6,7 @@ const cors = require('cors');
 const cron = require('node-cron');
 
 const { loginHandler, authMiddleware } = require('./auth');
+const otpRouter = require('./routes/otp');
 const { syncEvents } = require('./jobs/syncEvents');
 
 // finally refactored the huge index.js into separate route files :)
@@ -40,6 +41,7 @@ app.get('/sync-status', (req, res) => {
 
 // auth
 app.post('/auth/login', loginHandler);
+app.use('/auth', otpRouter);
 
 // mount routers
 app.use('/', scanRouter);           // scan routes e.g. GET /scan/:passId

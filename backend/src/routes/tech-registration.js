@@ -65,7 +65,7 @@ router.post('/',
       const timestamp = new Date().toISOString();
       const unitPrice = Number(process.env.TECH_PASS_PRICE || 300);
       const amount = (passes.length * unitPrice).toFixed(2);
-
+      console.log(req.user?.assigned_by);
       // Call payment service with HMAC authentication
       const paymentHeaders = createPaymentHeaders(process.env.PAYMENT_SERVICE_SECRET);
       await axios.post(process.env.PAYMENT_SERVICE_URL, {
@@ -75,7 +75,8 @@ router.post('/',
         phoneNumber,
         createdAt: timestamp,
         eventBookingDetails: passes.map(p => p.slots || {}),
-        type: "t"
+        type: "t",
+        assigned_by: req.user?.assigned_by || "WAS NOT INCLUDED"
       }, {
         headers: paymentHeaders
       });

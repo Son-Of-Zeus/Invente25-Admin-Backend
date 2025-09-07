@@ -150,12 +150,11 @@ router.post('/:passId/attendance', authMiddleware, requireRole(['event_admin','d
     const evRow = (await db.query('SELECT external_id, department_id FROM events WHERE external_id = $1', [event_id])).rows[0];
     if (!evRow) return res.status(404).json({ error: 'event not found' });
 
-    // If the caller is an event_admin, ensure they belong to the same department
-    // do we need this??? checkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
-    // if we don't, simply remove these 4 lines ig
+    // If the caller is an event_admin, restrict to their specific event_id from profile
     if (req.user.role === 'event_admin') {
-      if (req.user.department_id !== evRow.department_id) {
-        return res.status(403).json({ error: 'forbidden: event not in your department' });
+      if (!req.user.event_id) return res.status(403).json({ error: 'forbidden: no event assigned' });
+      if (Number(req.user.event_id) !== Number(event_id)) {
+        return res.status(403).json({ error: 'forbidden: can only mark attendance for assigned event' });
       }
     }
 
