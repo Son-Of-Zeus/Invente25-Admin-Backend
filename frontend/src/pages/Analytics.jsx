@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../hooks/useAuth";
-import { XMarkIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon } from "@heroicons/react/24/solid";
 import {
   BarChart,
   Bar,
@@ -18,7 +18,7 @@ import {
   Area,
   AreaChart,
 } from "recharts";
-
+import * as XLSX from 'xlsx';
 function fmt(n) {
   if (n === null || n === undefined) return "-";
   return n.toLocaleString();
@@ -44,7 +44,11 @@ const COLORS = [
 // +++ START: NEW MODAL COMPONENT +++
 function VolunteerDetailModal({ volunteer, onClose }) {
   const { authAxios } = useAuth();
-  const [details, setDetails] = useState({ loading: true, data: null, error: null });
+  const [details, setDetails] = useState({
+    loading: true,
+    data: null,
+    error: null,
+  });
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -52,10 +56,16 @@ function VolunteerDetailModal({ volunteer, onClose }) {
       try {
         setDetails({ loading: true, data: null, error: null });
         const encodedEmail = encodeURIComponent(volunteer.personal_email);
-        const response = await authAxios.get(`/analytics/volunteer/${encodedEmail}`);
+        const response = await authAxios.get(
+          `/analytics/volunteer/${encodedEmail}`
+        );
         setDetails({ loading: false, data: response.data, error: null });
       } catch (e) {
-        setDetails({ loading: false, data: null, error: e.response?.data?.error || 'Failed to load details.' });
+        setDetails({
+          loading: false,
+          data: null,
+          error: e.response?.data?.error || "Failed to load details.",
+        });
       }
     };
     fetchDetails();
@@ -66,17 +76,24 @@ function VolunteerDetailModal({ volunteer, onClose }) {
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center p-4 border-b">
           <div>
-            <h2 className="text-xl font-bold text-gray-800">Registration Details for {volunteer.name}</h2>
+            <h2 className="text-xl font-bold text-gray-800">
+              Registration Details for {volunteer.name}
+            </h2>
             <p className="text-sm text-gray-500">{volunteer.personal_email}</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200">
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-gray-200"
+          >
             <XMarkIcon className="h-6 w-6 text-gray-600" />
           </button>
         </div>
-        
+
         <div className="overflow-y-auto">
           {details.loading && (
-            <div className="p-12 text-center text-gray-500">Loading details...</div>
+            <div className="p-12 text-center text-gray-500">
+              Loading details...
+            </div>
           )}
           {details.error && (
             <div className="p-12 text-center text-red-600">{details.error}</div>
@@ -85,29 +102,55 @@ function VolunteerDetailModal({ volunteer, onClose }) {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Pass ID</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Participant</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Registered Events</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                    Pass ID
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                    Participant
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                    Registered Events
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                    Amount
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                    Date
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {details.data.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="p-8 text-center text-gray-500">No passes have been assigned by this volunteer yet.</td>
+                    <td colSpan="5" className="p-8 text-center text-gray-500">
+                      No passes have been assigned by this volunteer yet.
+                    </td>
                   </tr>
                 ) : (
-                  details.data.map(pass => (
+                  details.data.map((pass) => (
                     <tr key={pass.pass_id} className="hover:bg-gray-50">
-                      <td className="px-4 py-4 font-mono text-xs text-gray-700">{pass.pass_id.split('-')[0]}...</td>
+                      <td className="px-4 py-4 font-mono text-xs text-gray-700">
+                        {pass.pass_id.split("-")[0]}...
+                      </td>
                       <td className="px-4 py-4">
-                        <div className="font-medium text-gray-900">{pass.user_name || 'N/A'}</div>
+                        <div className="font-medium text-gray-900">
+                          {pass.user_name || "N/A"}
+                        </div>
                         <div className="text-gray-500">{pass.user_email}</div>
                       </td>
-                      <td className="px-4 py-4 text-gray-700 max-w-xs">{pass.event_names || <span className="text-gray-400 italic">No events assigned</span>}</td>
-                      <td className="px-4 py-4 font-medium text-gray-900">{formatCurrency(pass.amount)}</td>
-                      <td className="px-4 py-4 text-gray-600">{new Date(pass.paid_on).toLocaleString()}</td>
+                      <td className="px-4 py-4 text-gray-700 max-w-xs">
+                        {pass.event_names || (
+                          <span className="text-gray-400 italic">
+                            No events assigned
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 font-medium text-gray-900">
+                        {formatCurrency(pass.amount)}
+                      </td>
+                      <td className="px-4 py-4 text-gray-600">
+                        {new Date(pass.paid_on).toLocaleString()}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -162,6 +205,670 @@ function Sparkline({ data, width = 200, height = 40, color = "#10B981" }) {
   );
 }
 
+// +++ START: NEW EVENT DETAIL MODAL COMPONENT +++
+function EventDetailModal({ event, onClose }) {
+  const { authAxios } = useAuth();
+  const [details, setDetails] = useState({
+    loading: true,
+    data: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    const fetchEventDetails = async () => {
+      if (!event) return;
+      try {
+        setDetails({ loading: true, data: null, error: null });
+        const response = await authAxios.get(
+          `/analytics/event?event_id=${event.event_id}`
+        );
+        setDetails({ loading: false, data: response.data, error: null });
+      } catch (e) {
+        setDetails({
+          loading: false,
+          data: null,
+          error: e.response?.data?.error || "Failed to load event details.",
+        });
+      }
+    };
+    fetchEventDetails();
+  }, [event, authAxios]);
+
+  const d = details.data;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+        <div className="flex justify-between items-center p-4 border-b">
+          <h2 className="text-xl font-bold text-gray-800">
+            Detailed Analytics for {event.event_name}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-gray-200"
+          >
+            <XMarkIcon className="h-6 w-6 text-gray-600" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-6 space-y-6">
+          {details.loading && (
+            <div className="text-center text-gray-500 py-10">
+              Loading details...
+            </div>
+          )}
+          {details.error && (
+            <div className="text-center text-red-600 py-10">
+              {details.error}
+            </div>
+          )}
+          {d && (
+            <>
+              {/* Key Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-gray-50 p-4 rounded-lg border">
+                  <div className="text-sm text-gray-500 mb-1">
+                    Registrations
+                  </div>
+                  <div className="text-3xl font-bold text-blue-600">
+                    {fmt(d.totals.registrations)}
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg border">
+                  <div className="text-sm text-gray-500 mb-1">Attendance</div>
+                  <div className="text-3xl font-bold text-green-600">
+                    {fmt(d.totals.attendance)}
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg border">
+                  <div className="text-sm text-gray-500 mb-1">
+                    Attendance Rate
+                  </div>
+                  <div className="text-3xl font-bold text-orange-600">
+                    {d.totals.registrations > 0
+                      ? `${Math.round(
+                          (d.totals.attendance / d.totals.registrations) * 100
+                        )}%`
+                      : "0%"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Event Admins */}
+              <div className="bg-white rounded-lg border">
+                <div className="p-4 border-b">
+                  <h3 className="text-lg font-semibold">
+                    Assigned Event Admins
+                  </h3>
+                </div>
+                {d.event_admins?.length > 0 ? (
+                  <ul className="divide-y divide-gray-200">
+                    {d.event_admins.map((admin) => (
+                      <li
+                        key={admin.personal_email}
+                        className="p-4 flex justify-between items-center"
+                      >
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {admin.name}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {admin.personal_email}
+                          </div>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {admin.phone || "No phone"}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="p-4 text-sm text-gray-500">
+                    No event admins are assigned to this event.
+                  </p>
+                )}
+              </div>
+
+              {/* Recent Registrations Table */}
+              <div className="bg-white rounded-lg border">
+                <div className="p-4 border-b">
+                  <h3 className="text-lg font-semibold">
+                    Recent Registrations
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">
+                          Pass
+                        </th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">
+                          Slot
+                        </th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">
+                          Attended
+                        </th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">
+                          Time
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {d.recent_slots.map((r) => (
+                        <tr key={`${r.pass_id}-${r.slot_no}`}>
+                          <td className="px-4 py-3 font-mono text-xs">
+                            {r.pass_id}
+                          </td>
+                          <td className="px-4 py-3">{r.slot_no}</td>
+                          <td className="px-4 py-3">
+                            {r.attended ? "Yes" : "No"}
+                          </td>
+                          <td className="px-4 py-3">
+                            {new Date(r.created_at).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+function DepartmentViewContent({
+  data: d,
+  refreshTime,
+  onEventClick,
+}) {
+  return (
+    <>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">
+          Department Analytics — {d.department?.name}
+        </h2>
+        <div className="text-sm text-gray-500">
+          Last updated: {refreshTime.toLocaleTimeString()}
+        </div>
+      </div>
+
+      {/* Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="text-sm text-gray-500 mb-1">Total Events</div>
+          <div className="text-3xl font-bold text-blue-600">
+            {fmt(d.totals.total_events)}
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="text-sm text-gray-500 mb-1">Total Registrations</div>
+          <div className="text-3xl font-bold text-green-600">
+            {fmt(d.totals.total_registrations)}
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            Attended: {fmt(d.totals.total_attendance)}
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="text-sm text-gray-500 mb-1">Total Revenue</div>
+          <div className="text-3xl font-bold text-purple-600">
+            {formatCurrency(d.totals.total_revenue)}
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            Avg: {formatCurrency(d.totals.avg_transaction)}
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="text-sm text-gray-500 mb-1">Attendance Rate</div>
+          <div className="text-3xl font-bold text-orange-600">
+            {d.totals.total_registrations > 0
+              ? Math.round(
+                  (d.totals.total_attendance / d.totals.total_registrations) *
+                    100
+                )
+              : 0}
+            %
+          </div>
+        </div>
+      </div>
+
+      {/* Tech vs Non-Tech Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold mb-4">Event Type Breakdown</h3>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
+              <div>
+                <div className="font-medium text-blue-800">
+                  Technical Events
+                </div>
+                <div className="text-sm text-blue-600">
+                  Registrations: {fmt(d.breakdown.technical.registrations)}
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-blue-600">
+                {fmt(d.breakdown.technical.attendance)}
+              </div>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-green-50 rounded">
+              <div>
+                <div className="font-medium text-green-800">
+                  Non-Technical Events
+                </div>
+                <div className="text-sm text-green-600">
+                  Registrations: {fmt(d.breakdown.non_technical.registrations)}
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-green-600">
+                {fmt(d.breakdown.non_technical.attendance)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold mb-4">
+            Event Type Distribution
+          </h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <PieChart>
+              <Pie
+                data={d.event_type_breakdown}
+                cx="50%"
+                cy="50%"
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="total_registrations"
+                label={({ event_type, total_registrations }) =>
+                  `${event_type}: ${total_registrations}`
+                }
+              >
+                {d.event_type_breakdown.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={COLORS[index % COLORS.length]}
+                  />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold mb-4">
+            Registrations Over Time
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={d.registrations_over_time}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="day" />
+              <YAxis />
+              <Tooltip />
+              <Area
+                type="monotone"
+                dataKey="count"
+                stroke="#3B82F6"
+                fill="#3B82F6"
+                fillOpacity={0.3}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold mb-4">Payment Methods</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={d.passes_by_payment}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="method" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="total_passes" fill="#10B981" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Events Table */}
+      <div className="bg-white rounded-lg shadow-sm border">
+        <div className="p-6 border-b">
+          <h3 className="text-lg font-semibold">Event Performance</h3>
+          <div className="text-sm text-gray-600 mt-1">
+            Detailed breakdown of all events
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Event
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Type
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Registrations
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Attendance
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Revenue
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Rate
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {d.per_event.map((ev) => (
+                // +++ MAKE THE TABLE ROW CLICKABLE +++
+                <tr
+                  key={ev.event_id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => onEventClick ? onEventClick(ev) : {}}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">
+                      {ev.event_name}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      ID: {ev.event_id}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span
+                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        ev.event_type === "technical"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-green-100 text-green-800"
+                      }`}
+                    >
+                      {ev.event_type}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {fmt(ev.registrations)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {fmt(ev.attendance)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatCurrency(ev.revenue)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {ev.registrations > 0
+                      ? Math.round((ev.attendance / ev.registrations) * 100)
+                      : 0}
+                    %
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// +++ START: NEW DEPARTMENT DETAIL MODAL COMPONENT +++
+function DepartmentDetailModal({ department, onEventClick, onClose }) {
+  const { authAxios } = useAuth();
+  const [details, setDetails] = useState({
+    loading: true,
+    data: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    const fetchDeptDetails = async () => {
+      if (!department) return;
+      try {
+        setDetails({ loading: true, data: null, error: null });
+        const response = await authAxios.get(
+          `/analytics/department/${department.department_id}`
+        );
+        setDetails({ loading: false, data: response.data, error: null });
+      } catch (e) {
+        setDetails({
+          loading: false,
+          data: null,
+          error: e.response?.data?.error || "Failed to load details.",
+        });
+      }
+    };
+    fetchDeptDetails();
+  }, [department, authAxios]);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+        <div className="flex justify-between items-center p-4 border-b">
+          <h2 className="text-xl font-bold text-gray-800">
+            Detailed Analytics for {department.department_name}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-gray-200"
+          >
+            <XMarkIcon className="h-6 w-6 text-gray-600" />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-6 bg-gray-50">
+          {details.loading && (
+            <div className="text-center py-10">
+              Loading department details...
+            </div>
+          )}
+          {details.error && (
+            <div className="text-center text-red-500 py-10">
+              {details.error}
+            </div>
+          )}
+          {details.data && (
+            <DepartmentViewContent
+              data={details.data}
+              refreshTime={new Date()}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// +++ START: NEW ALL EVENTS TABLE COMPONENT +++
+function AllEventsTable({ onEventClick }) {
+  const { authAxios } = useAuth();
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+
+  useEffect(() => {
+    authAxios
+      .get("/analytics/all-events")
+      .then((res) => setEvents(res.data))
+      .catch(() => setError("Could not load events."))
+      .finally(() => setLoading(false));
+  }, [authAxios]);
+
+  const departments = useMemo(
+    () => [...new Set(events.map((e) => e.department_name))],
+    [events]
+  );
+
+  const filteredEvents = useMemo(() => {
+    return events.filter((event) => {
+      const nameMatch = event.event_name
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const deptMatch = departmentFilter
+        ? event.department_name === departmentFilter
+        : true;
+      const typeMatch = typeFilter ? event.event_type === typeFilter : true;
+      return nameMatch && deptMatch && typeMatch;
+    });
+  }, [events, searchTerm, departmentFilter, typeFilter]);
+
+  const handleExport = () => {
+    const dataToExport = filteredEvents.map((e) => ({
+      "Event Name": e.event_name,
+      Department: e.department_name,
+      Type: e.event_type,
+      Registrations: e.registrations,
+      Attendance: e.attendance,
+      Revenue: e.revenue,
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Events");
+    XLSX.writeFile(
+      workbook,
+      `invente-events-${new Date().toISOString().split("T")[0]}.xlsx`
+    );
+  };
+
+  if (loading)
+    return <div className="text-center py-10">Loading all events...</div>;
+  if (error)
+    return <div className="text-center text-red-500 py-10">{error}</div>;
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border">
+      <div className="p-4 border-b space-y-4 md:space-y-0 md:flex md:items-center md:justify-between">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-lg font-semibold">All Events</h3>
+          <p className="text-sm text-gray-500">
+            Search, filter, and view details for any event.
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <input
+            type="text"
+            placeholder="Search events..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="border rounded px-2 py-1.5 w-40 text-sm"
+          />
+          <select
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+            className="border rounded px-2 py-1.5 text-sm"
+          >
+            <option value="">All Departments</option>
+            {departments.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="border rounded px-2 py-1.5 text-sm"
+          >
+            <option value="">All Types</option>
+            <option value="technical">Technical</option>
+            <option value="non-technical">Non-Technical</option>
+            <option value="workshop">Workshop</option>
+          </select>
+          <button
+            onClick={handleExport}
+            className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+          >
+            Export
+          </button>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Event
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Type
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Registrations
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Attendance
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Revenue
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {filteredEvents.length === 0 ? (
+              <tr>
+                <td colSpan="5" className="text-center py-10 text-gray-500">
+                  No events match your criteria.
+                </td>
+              </tr>
+            ) : (
+              filteredEvents.map((ev) => (
+                <tr
+                  key={ev.event_id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => onEventClick(ev)}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">
+                      {ev.event_name}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {ev.department_name}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span
+                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        ev.event_type === "technical"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-green-100 text-green-800"
+                      }`}
+                    >
+                      {ev.event_type}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {fmt(ev.registrations)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {fmt(ev.attendance)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatCurrency(ev.revenue)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function AnalyticsPage() {
   const { authAxios, user } = useAuth();
   const [stats, setStats] = useState(null);
@@ -170,6 +877,8 @@ export default function AnalyticsPage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshTime, setRefreshTime] = useState(new Date());
   const [selectedVolunteer, setSelectedVolunteer] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [selectedDepartment, setSelectedDepartment] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -343,237 +1052,9 @@ export default function AnalyticsPage() {
 
   // Department view
   if (stats.scope === "department") {
-    const d = stats.data;
     return (
       <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">
-            Department Analytics — {d.department?.name}
-          </h2>
-          <div className="text-sm text-gray-500">
-            Last updated: {refreshTime.toLocaleTimeString()}
-          </div>
-        </div>
-
-        {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="text-sm text-gray-500 mb-1">Total Events</div>
-            <div className="text-3xl font-bold text-blue-600">
-              {fmt(d.totals.total_events)}
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="text-sm text-gray-500 mb-1">
-              Total Registrations
-            </div>
-            <div className="text-3xl font-bold text-green-600">
-              {fmt(d.totals.total_registrations)}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              Attended: {fmt(d.totals.total_attendance)}
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="text-sm text-gray-500 mb-1">Total Revenue</div>
-            <div className="text-3xl font-bold text-purple-600">
-              {formatCurrency(d.totals.total_revenue)}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              Avg: {formatCurrency(d.totals.avg_transaction)}
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="text-sm text-gray-500 mb-1">Attendance Rate</div>
-            <div className="text-3xl font-bold text-orange-600">
-              {d.totals.total_registrations > 0
-                ? Math.round(
-                    (d.totals.total_attendance / d.totals.total_registrations) *
-                      100
-                  )
-                : 0}
-              %
-            </div>
-          </div>
-        </div>
-
-        {/* Tech vs Non-Tech Breakdown */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <h3 className="text-lg font-semibold mb-4">Event Type Breakdown</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
-                <div>
-                  <div className="font-medium text-blue-800">
-                    Technical Events
-                  </div>
-                  <div className="text-sm text-blue-600">
-                    Registrations: {fmt(d.breakdown.technical.registrations)}
-                  </div>
-                </div>
-                <div className="text-2xl font-bold text-blue-600">
-                  {fmt(d.breakdown.technical.attendance)}
-                </div>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-green-50 rounded">
-                <div>
-                  <div className="font-medium text-green-800">
-                    Non-Technical Events
-                  </div>
-                  <div className="text-sm text-green-600">
-                    Registrations:{" "}
-                    {fmt(d.breakdown.non_technical.registrations)}
-                  </div>
-                </div>
-                <div className="text-2xl font-bold text-green-600">
-                  {fmt(d.breakdown.non_technical.attendance)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <h3 className="text-lg font-semibold mb-4">
-              Event Type Distribution
-            </h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={d.event_type_breakdown}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="total_registrations"
-                  label={({ event_type, total_registrations }) =>
-                    `${event_type}: ${total_registrations}`
-                  }
-                >
-                  {d.event_type_breakdown.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <h3 className="text-lg font-semibold mb-4">
-              Registrations Over Time
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={d.registrations_over_time}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Tooltip />
-                <Area
-                  type="monotone"
-                  dataKey="count"
-                  stroke="#3B82F6"
-                  fill="#3B82F6"
-                  fillOpacity={0.3}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <h3 className="text-lg font-semibold mb-4">Payment Methods</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={d.passes_by_payment}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="method" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="total_passes" fill="#10B981" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Events Table */}
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="p-6 border-b">
-            <h3 className="text-lg font-semibold">Event Performance</h3>
-            <div className="text-sm text-gray-600 mt-1">
-              Detailed breakdown of all events
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Event
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Registrations
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Attendance
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Revenue
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Rate
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {d.per_event.map((ev) => (
-                  <tr key={ev.event_id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {ev.event_name}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        ID: {ev.event_id}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          ev.event_type === "technical"
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-green-100 text-green-800"
-                        }`}
-                      >
-                        {ev.event_type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {fmt(ev.registrations)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {fmt(ev.attendance)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(ev.revenue)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {ev.registrations > 0
-                        ? Math.round((ev.attendance / ev.registrations) * 100)
-                        : 0}
-                      %
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DepartmentViewContent data={stats.data} refreshTime={refreshTime} />
       </div>
     );
   }
@@ -581,23 +1062,36 @@ export default function AnalyticsPage() {
   // College view (super_admin)
   const c = stats.data;
   const tabs = [
+    // Reorganized Tabs
     { id: "overview", label: "Overview", icon: "📊" },
     { id: "departments", label: "Departments", icon: "🏢" },
+    { id: "events", label: "Events", icon: "🎟️" },
     { id: "workshops", label: "Workshops", icon: "🔧" },
     { id: "hackathons", label: "Hackathons", icon: "💻" },
-    { id: "revenue", label: "Revenue", icon: "💰" },
     { id: "volunteers", label: "Volunteers", icon: "👥" },
   ];
 
   return (
     <div className="p-6">
-
       {selectedVolunteer && (
-        <VolunteerDetailModal 
-          volunteer={selectedVolunteer} 
-          onClose={() => setSelectedVolunteer(null)} 
+        <VolunteerDetailModal
+          volunteer={selectedVolunteer}
+          onClose={() => setSelectedVolunteer(null)}
         />
       )}
+      {selectedEvent && (
+        <EventDetailModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+        />
+      )}
+      {selectedDepartment && (
+        <DepartmentDetailModal
+          department={selectedDepartment}
+          onClose={() => setSelectedDepartment(null)}
+        />
+      )}
+      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">College Analytics Dashboard</h2>
         <div className="flex items-center space-x-4">
@@ -678,6 +1172,24 @@ export default function AnalyticsPage() {
                 Avg: {formatCurrency(c.totals.avg_transaction)}
               </div>
             </div>
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="text-sm text-gray-500 mb-1">
+                Online Payer Attendance
+              </div>
+              <div className="text-3xl font-bold text-teal-600">
+                {c.totals.online_payer_stats?.total_online_payers > 0
+                  ? `${Math.round(
+                      (c.totals.online_payer_stats.online_payers_attended /
+                        c.totals.online_payer_stats.total_online_payers) *
+                        100
+                    )}%`
+                  : "0%"}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                {fmt(c.totals.online_payer_stats?.online_payers_attended)} /{" "}
+                {fmt(c.totals.online_payer_stats?.total_online_payers)} attended
+              </div>
+            </div>
           </div>
 
           {/* Event Type Breakdown */}
@@ -732,79 +1244,6 @@ export default function AnalyticsPage() {
               </ResponsiveContainer>
             </div>
           </div>
-
-          {/* Top Events */}
-          <div className="bg-white rounded-lg shadow-sm border">
-            <div className="p-6 border-b">
-              <h3 className="text-lg font-semibold">Top Performing Events</h3>
-              <div className="text-sm text-gray-600 mt-1">
-                Most registered events across the college
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Event
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Department
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Registrations
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Attendance
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Revenue
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {c.top_events.slice(0, 10).map((ev) => (
-                    <tr key={ev.event_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {ev.event_name}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          ID: {ev.event_id}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {ev.department_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            ev.event_type === "technical"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-green-100 text-green-800"
-                          }`}
-                        >
-                          {ev.event_type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {fmt(ev.registrations)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {fmt(ev.attendance)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(ev.revenue)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       )}
 
@@ -813,9 +1252,9 @@ export default function AnalyticsPage() {
           <div className="bg-white rounded-lg shadow-sm border">
             <div className="p-6 border-b">
               <h3 className="text-lg font-semibold">Department Performance</h3>
-              <div className="text-sm text-gray-600 mt-1">
-                Comprehensive department analytics
-              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Click a department row for a detailed breakdown.
+              </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -842,38 +1281,26 @@ export default function AnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {c.per_department.map((dpt) => (
-                    <tr key={dpt.department_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {dpt.department_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {fmt(dpt.event_count)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {fmt(dpt.registrations)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {fmt(dpt.attendance)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(dpt.revenue)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {dpt.registrations > 0
-                          ? Math.round(
-                              (dpt.attendance / dpt.registrations) * 100
-                            )
-                          : 0}
-                        %
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
+                {c.per_department.map((dpt) => (
+                  <tr key={dpt.department_id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedDepartment(dpt)}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{dpt.department_name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fmt(dpt.event_count)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fmt(dpt.registrations)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fmt(dpt.attendance)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(dpt.revenue)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{dpt.registrations > 0 ? `${Math.round((dpt.attendance / dpt.registrations) * 100)}%` : '0%'}</td>
+                  </tr>
+                ))}
+              </tbody>
               </table>
             </div>
           </div>
         </div>
+      )}
+
+      {/* +++ NEW TAB for All Events +++ */}
+      {activeTab === "events" && (
+        <AllEventsTable onEventClick={(event) => setSelectedEvent(event)} />
       )}
 
       {activeTab === "workshops" && (
@@ -1171,21 +1598,30 @@ export default function AnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {c.central_volunteers && c.central_volunteers.map(vol => (
-                    // +++ ADD onClick HANDLER AND STYLING TO THE ROW +++
-                    <tr 
-                      key={vol.personal_email} 
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => setSelectedVolunteer(vol)}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{vol.name}</div>
-                        <div className="text-sm text-gray-500">{vol.personal_email} | {vol.phone || 'No Phone'}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">{fmt(vol.passes_assigned)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">{formatCurrency(vol.total_collected)}</td>
-                    </tr>
-                  ))}
+                  {c.central_volunteers &&
+                    c.central_volunteers.map((vol) => (
+                      // +++ ADD onClick HANDLER AND STYLING TO THE ROW +++
+                      <tr
+                        key={vol.personal_email}
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => setSelectedVolunteer(vol)}
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {vol.name}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {vol.personal_email} | {vol.phone || "No Phone"}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {fmt(vol.passes_assigned)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {formatCurrency(vol.total_collected)}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>

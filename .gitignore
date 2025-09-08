@@ -1,7 +1,7 @@
 
 
 .env.example 
-
+credentials.json
 tokenHelper.js
 ### Node ###
 # Logs

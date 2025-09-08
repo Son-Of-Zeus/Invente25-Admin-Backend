@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   db:
     image: postgres:15
@@ -25,8 +24,8 @@ services:
         max-file: "3"
 
   backend:
-    # build: ./backend
-    image: irfanakthar/invente25-admin-backend:v2
+    build: ./backend
+    # image: irfanakthar/invente25-admin-backend:v2
     environment:
       - PORT=4000
       - DATABASE_URL=postgres://invente25:invente25pw@db:5432/invente25
@@ -37,11 +36,16 @@ services:
       - SYNC_EVENTS_CRON=*/2 * * * * # every 2 minutes and once per startup
       - EVENTS_API_URL=https://ssnsnucinvente.com/api/events?pagination[pageSize]=140
       - PAYMENT_SERVICE_URL=http://localhost:8080/api/payment
-      - RECEIPT_SERVICE_URL=http://localhost:8080/api/receipt
+      - RECEIPT_SERVICE_URL=http://localhost:8080/restricted/receipt
       - MASTER_PW=itsmeirfan
       - TECH_PASS_PRICE=300
       - NON_TECH_DEFAULT_PRICE=300
       - WORKSHOP_PRICE=300
+      - PAYMENT_SERVICE_SECRET=rjkgsigirgrlgrl123y4t5u6i7o8p0d
+      - MAIL_SERVICE_SECRET=rjkgsigirgrlgrl123y4t5u6i7o8p0d
+      - GOOGLE_APPLICATION_CREDENTIALS=credentials.json
+      - MASTER_ADMIN_EMAILS=irfanakthar@ssn.edu.in
+      - MAIL_SERVICE_URL=http://localhost:8080/api/sendOTP
     ports:
       - "4000:4000"
     depends_on:
@@ -64,8 +68,8 @@ services:
         max-file: "3"
 
   frontend:
-    # build: ./frontend
-    image: irfanakthar/invente25-admin-frontend:v1
+    build: ./frontend
+    #image: irfanakthar/invente25-admin-frontend:v1
     ports:
       - "3000:3000"
     depends_on:

@@ -6,10 +6,13 @@ const XLSX = require("xlsx");
 
 const router = express.Router();
 // Event-level analytics for event_admin (their event only) and super_admin (any event via query)
+// routes/analytics.js
+
+// Replace the existing '/event' route with this one
 router.get(
   "/event",
   authMiddleware,
-  requireRole(["event_admin", "super_admin"]),
+  requireRole(["event_admin", "super_admin", "dept_admin"]), // 1. Allow dept_admin
   async (req, res) => {
     try {
       let eventId;
@@ -18,26 +21,37 @@ router.get(
           return res.status(403).json({ error: "no event assigned" });
         eventId = Number(req.user.event_id);
       } else {
+        // This block now handles super_admin and dept_admin
         eventId = Number(req.query.event_id);
         if (Number.isNaN(eventId))
           return res.status(400).json({ error: "event_id required" });
       }
 
-      const eventRow = (
-        await db.query(
-          "SELECT external_id, name, event_type, cost, department_id FROM events WHERE external_id=$1",
-          [eventId]
-        )
-      ).rows[0];
-      if (!eventRow) return res.status(404).json({ error: "event not found" });
+      const eventRes = await db.query(
+        "SELECT external_id, name, event_type, cost, department_id FROM events WHERE external_id=$1",
+        [eventId]
+      );
+      const eventRow = eventRes.rows[0];
+      if (!eventRow) {
+        return res.status(404).json({ error: "event not found" });
+      }
+
+      // 2. Add security check for dept_admin
+      if (req.user.role === "dept_admin") {
+        if (eventRow.department_id !== req.user.department_id) {
+          return res
+            .status(403)
+            .json({ error: "You are not authorized to view this event" });
+        }
+      }
 
       const regRow = (
         await db.query(
           `
-      SELECT COUNT(*)::int AS registrations,
-             COALESCE(SUM(CASE WHEN attended THEN 1 ELSE 0 END),0)::int AS attendance
-      FROM slots WHERE event_id = $1
-    `,
+            SELECT COUNT(*)::int AS registrations,
+                   COALESCE(SUM(CASE WHEN attended THEN 1 ELSE 0 END),0)::int AS attendance
+            FROM slots WHERE event_id = $1
+          `,
           [eventId]
         )
       ).rows[0];
@@ -45,15 +59,22 @@ router.get(
       const recent = (
         await db.query(
           `
-      SELECT s.pass_id, s.slot_no, s.attended, s.created_at
-      FROM slots s
-      WHERE s.event_id = $1
-      ORDER BY s.created_at DESC
-      LIMIT 100
-    `,
+            SELECT s.pass_id, s.slot_no, s.attended, s.created_at
+            FROM slots s
+            WHERE s.event_id = $1
+            ORDER BY s.created_at DESC
+            LIMIT 100
+          `,
           [eventId]
         )
       ).rows;
+
+      // 3. Fetch the list of assigned event admins
+      const adminRes = await db.query(
+        'SELECT name, personal_email, phone FROM admin_profiles WHERE event_id = $1',
+        [eventId]
+      );
+      const eventAdmins = adminRes.rows;
 
       return res.json({
         event: eventRow,
@@ -62,6 +83,7 @@ router.get(
           attendance: regRow.attendance,
         },
         recent_slots: recent,
+        event_admins: eventAdmins, // 4. Add admins to the JSON response
       });
     } catch (err) {
       console.error("analytics/event error", err);
@@ -446,6 +468,20 @@ router.get(
     `)
       ).rows;
 
+      const onlinePayerStats = (await db.query(`
+        WITH online_passes AS (
+          SELECT p.pass_id
+          FROM passes p
+          JOIN receipts r ON p.payment_id = r.payment_id
+          WHERE r.method = 'online'
+        )
+        SELECT
+            COUNT(DISTINCT op.pass_id)::int AS total_online_payers,
+            COUNT(DISTINCT s.pass_id)::int AS online_payers_attended
+        FROM online_passes op
+        LEFT JOIN slots s ON op.pass_id = s.pass_id AND s.attended = true;
+      `)).rows[0];
+
       const centralVolunteers = (
         await db.query(`
               SELECT
@@ -469,6 +505,7 @@ router.get(
           total_revenue: revenueRes.total_revenue,
           avg_transaction: revenueRes.avg_transaction,
           total_transactions: revenueRes.total_transactions,
+          online_payer_stats: onlinePayerStats,
         },
         per_department: perDept,
         event_type_breakdown: eventTypeBreakdown,
@@ -782,6 +819,36 @@ async function getCollegeAnalyticsDataForExport() {
     },
   };
 }
+
+// +++ START: NEW ENDPOINT for All Events Table +++
+router.get(
+  "/all-events",
+  authMiddleware,
+  requireRole(['super_admin']),
+  async (req, res) => {
+    try {
+      const allEvents = (await db.query(`
+        SELECT
+          e.external_id AS event_id,
+          e.name AS event_name,
+          e.event_type,
+          d.name AS department_name,
+          COUNT(s.*)::int AS registrations,
+          COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END), 0)::int AS attendance,
+          (COUNT(s.*) * e.cost)::decimal AS revenue
+        FROM events e
+        LEFT JOIN departments d ON e.department_id = d.id
+        LEFT JOIN slots s ON s.event_id = e.external_id
+        GROUP BY e.external_id, e.name, e.event_type, d.name, e.cost -- FIX: Added missing columns here
+        ORDER BY registrations DESC;
+      `)).rows;
+      res.json(allEvents);
+    } catch (err) {
+      console.error('Error fetching all events analytics:', err);
+      res.status(500).json({ error: 'Failed to fetch all events' });
+    }
+  }
+);
 
 // Workshop analytics endpoint (separate from departments)
 router.get(
