@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useState } from "react";
 import { createApi } from "../api/api";
 import axios from "axios";
 
@@ -15,17 +15,8 @@ export function AuthProvider({ children }) {
     return raw ? JSON.parse(raw) : null;
   });
 
-  useEffect(() => {
-    if (token) localStorage.setItem("token", token);
-    else {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (user) localStorage.setItem("user", JSON.stringify(user));
-  }, [user]);
+  // REMOVED: The problematic useEffect that caused the race condition.
+  // The logic is now handled directly in login() and logout().
 
   const login = async (email, password, profile = {}) => {
     const resp = await axios.post(
@@ -34,18 +25,30 @@ export function AuthProvider({ children }) {
     );
     const t = resp.data.token;
     const payload = JSON.parse(atob(t.split(".")[1]));
-    setToken(t);
-    setUser({
+    
+    const newUser = {
       email: payload.email,
       role: payload.role,
       department_id: payload.department_id,
       assigned_by: payload.assigned_by || null,
       event_id: payload.event_id || null,
-    });
+    };
+
+    // FIX: Update localStorage immediately and synchronously BEFORE updating state.
+    localStorage.setItem("token", t);
+    localStorage.setItem("user", JSON.stringify(newUser));
+
+    setToken(t);
+    setUser(newUser);
+    
     return { token: t, user: payload };
   };
 
   const logout = () => {
+    // FIX: Clear localStorage immediately and synchronously BEFORE updating state.
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+
     setToken(null);
     setUser(null);
   };

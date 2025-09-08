@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import api from '../api/api';
 import RegistrationSuccess from '../components/RegistrationSuccess';
 import { 
   UserIcon, 
@@ -19,7 +18,7 @@ import {
 
 export default function NonTechRegistration() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, authAxios } = useAuth();
   const [loading, setLoading] = useState(false);
   const [events, setEvents] = useState([]);
   const [error, setError] = useState(null);
@@ -40,7 +39,7 @@ export default function NonTechRegistration() {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        const response = await api.get('/events');
+        const response = await authAxios.get('/events');
         const allEvents = response.data.rows;
         let filteredEvents = allEvents.filter(event => event.event_type === 'non-technical');
         
@@ -56,7 +55,7 @@ export default function NonTechRegistration() {
     };
 
     fetchEvents();
-  }, [user]);
+  }, [user, authAxios]);
 
   const filteredEvents = events.filter(ev => {
     const q = (search || '').trim().toLowerCase();
@@ -95,7 +94,7 @@ export default function NonTechRegistration() {
     try {
       const eventData = [{ event_id: formData.selectedEventId }];
 
-      await api.post('/non-tech-registration', {
+      await authAxios.post('/non-tech-registration', {
         emailID: formData.emailID,
         name: formData.name,
         phoneNumber: formData.phoneNumber,

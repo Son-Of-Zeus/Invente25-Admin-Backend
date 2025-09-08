@@ -12,7 +12,7 @@ import {
 } from "@heroicons/react/24/outline";
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, authAxios } = useAuth();
   const role = user?.role || null;
 
   // Define roles to avoid repetition

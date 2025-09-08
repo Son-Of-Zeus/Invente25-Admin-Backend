@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import api from '../api/api';
 import RegistrationSuccess from '../components/RegistrationSuccess';
 import { 
   UserIcon, 
@@ -19,7 +18,7 @@ import {
 
 export default function WorkshopRegistration() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, authAxios } = useAuth();
   const [loading, setLoading] = useState(false);
   const [workshops, setWorkshops] = useState([]);
   const [error, setError] = useState(null);
@@ -40,7 +39,7 @@ export default function WorkshopRegistration() {
   useEffect(() => {
     const fetchWorkshops = async () => {
       try {
-        const response = await api.get('/events?department_id=11');
+        const response = await authAxios.get('/events?department_id=11');
         setWorkshops(response.data.rows);
       } catch (err) {
         setError('Failed to load workshops');
@@ -48,7 +47,7 @@ export default function WorkshopRegistration() {
       }
     };
     fetchWorkshops();
-  }, []);
+  }, [user, authAxios]);
 
   const filteredWorkshops = workshops.filter(ws => {
     const q = (search || '').trim().toLowerCase();
@@ -86,7 +85,7 @@ export default function WorkshopRegistration() {
     try {
       const workshopData = [{ workshop_id: formData.selectedWorkshopId }];
 
-      await api.post('/workshop-registration', {
+      await authAxios.post('/workshop-registration', {
         emailID: formData.emailID,
         name: formData.name,
         phoneNumber: formData.phoneNumber,

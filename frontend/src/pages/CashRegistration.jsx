@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import api from '../api/api';
 
 export default function TechRegistration() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, authAxios } = useAuth();
   const [loading, setLoading] = useState(false);
   const [events, setEvents] = useState([]);
   const [error, setError] = useState(null);
@@ -19,7 +18,7 @@ export default function TechRegistration() {
 
   // Fetch only technical events for dropdowns
   useEffect(() => {
-    api.get('/events')
+    authAxios.get('/events')
       .then(res => {
         const allEvents = res.data.rows || [];
         // Filter to only show technical events
@@ -33,7 +32,7 @@ export default function TechRegistration() {
         setEvents(technicalEvents);
       })
       .catch(err => setError('Failed to load events'));
-  }, [user]);
+  }, [user, authAxios]);
 
   const handleInputChange = (e) => {
     setFormData({
@@ -68,7 +67,7 @@ export default function TechRegistration() {
     setError(null);
 
     try {
-      const response = await api.post('/cash-registration', formData);
+      const response = await authAxios.post('/cash-registration', formData);
       alert(`Registration successful! Payment ID: \${response.data.paymentId}\nAmount: ₹\${response.data.amount}`);
       // Reset form
       setFormData({

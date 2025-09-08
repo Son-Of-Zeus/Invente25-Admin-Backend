@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import api from '../api/api';
 import RegistrationSuccess from '../components/RegistrationSuccess';
 import { 
   UserIcon, 
@@ -18,7 +17,7 @@ import {
 
 export default function TechRegistration() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, authAxios } = useAuth();
   const [loading, setLoading] = useState(false);
   const [events, setEvents] = useState([]);
   const [error, setError] = useState(null);
@@ -36,7 +35,7 @@ export default function TechRegistration() {
   const [formData, setFormData] = useState(initialFormData);
 
   useEffect(() => {
-    api.get('/events')
+    authAxios.get('/events')
       .then(res => {
         const allEvents = res.data.rows || [];
         let technicalEvents = allEvents.filter(event => event.event_type === 'technical');
@@ -49,7 +48,7 @@ export default function TechRegistration() {
         setEvents(technicalEvents);
       })
       .catch(err => setError('Failed to load events'));
-  }, [user]);
+  }, [user, authAxios]);
 
   const handleInputChange = (e) => {
     setFormData({
@@ -87,7 +86,7 @@ export default function TechRegistration() {
     }
 
     try {
-      await api.post('/tech-registration', formData);
+      await authAxios.post('/tech-registration', formData);
 
       const registeredItemsDetails = [{
         name: 'Technical Pass',
