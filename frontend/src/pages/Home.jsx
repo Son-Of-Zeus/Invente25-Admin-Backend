@@ -64,6 +64,12 @@ export default function Home() {
       roles: registrationRoles,
       icon: PuzzlePieceIcon,
     },
+    {
+      title: "Database",
+      desc: "Access the Database",
+      to: "/admin/dump",
+      roles: ["super_admin"]
+    }
   ];
 
   const visibleCards = cards.filter((c) => {
