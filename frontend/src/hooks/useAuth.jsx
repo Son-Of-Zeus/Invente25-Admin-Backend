@@ -19,8 +19,9 @@ export function AuthProvider({ children }) {
   // The logic is now handled directly in login() and logout().
 
   const login = async (email, password, profile = {}) => {
+    const base = import.meta.env.VITE_API_BASE || "http://localhost:4000/organizers/api";
     const resp = await axios.post(
-      `${import.meta.env.VITE_API_BASE || "http://localhost:4000"}/auth/login`,
+      `${base}/auth/login`,
       { email, password, ...profile }
     );
     const t = resp.data.token;

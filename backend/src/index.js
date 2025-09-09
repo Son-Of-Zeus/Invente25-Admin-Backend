@@ -39,20 +39,26 @@ app.get('/sync-status', (req, res) => {
   });
 });
 
+// Group all app routes under a single base to avoid Nginx path conflicts
+const baseRouter = express.Router();
+
 // auth
-app.post('/auth/login', loginHandler);
-app.use('/auth', otpRouter);
+baseRouter.post('/auth/login', loginHandler);
+baseRouter.use('/auth', otpRouter);
 
 // mount routers
-app.use('/', scanRouter);           // scan routes e.g. GET /scan/:passId
-app.use('/passes', passesRouter);   // passes and slot management
-app.use('/events', eventsRouter);   // events listing
-app.use('/analytics', analyticsRouter); // analytics
-app.use('/tech-registration', techRegistrationRouter); // tech registration endpoint
-app.use('/workshop-registration', workshopRegistrationRouter); // workshop registration endpoint
-app.use('/non-tech-registration', nonTechRegistrationRouter); // non-tech registration endpoint
-app.use('/admin', adminRouter); // superadmin-only admin utilities
+baseRouter.use('/', scanRouter);           // scan routes e.g. GET /scan/:passId
+baseRouter.use('/passes', passesRouter);   // passes and slot management
+baseRouter.use('/events', eventsRouter);   // events listing
+baseRouter.use('/analytics', analyticsRouter); // analytics
+baseRouter.use('/tech-registration', techRegistrationRouter); // tech registration endpoint
+baseRouter.use('/workshop-registration', workshopRegistrationRouter); // workshop registration endpoint
+baseRouter.use('/non-tech-registration', nonTechRegistrationRouter); // non-tech registration endpoint
+baseRouter.use('/admin', adminRouter); // superadmin-only admin utilities
 app.use('/', receiptRouter); // receipt OCR endpoint (no auth)
+
+// Mount base router
+app.use('/organizers/api', baseRouter);
 
 app.listen(PORT, () => {
   console.log(`Invente25 admin backend listening on ${PORT}`);
