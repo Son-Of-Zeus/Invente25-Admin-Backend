@@ -8,11 +8,11 @@ const router = express.Router();
 // Event-level analytics for event_admin (their event only) and super_admin (any event via query)
 // routes/analytics.js
 
-// Replace the existing '/event' route with this one
+// --- MODIFIED ROUTE: Event-level analytics ---
 router.get(
   "/event",
   authMiddleware,
-  requireRole(["event_admin", "super_admin", "dept_admin"]), // 1. Allow dept_admin
+  requireRole(["event_admin", "super_admin", "dept_admin"]),
   async (req, res) => {
     try {
       let eventId;
@@ -21,7 +21,6 @@ router.get(
           return res.status(403).json({ error: "no event assigned" });
         eventId = Number(req.user.event_id);
       } else {
-        // This block now handles super_admin and dept_admin
         eventId = Number(req.query.event_id);
         if (Number.isNaN(eventId))
           return res.status(400).json({ error: "event_id required" });
@@ -36,7 +35,6 @@ router.get(
         return res.status(404).json({ error: "event not found" });
       }
 
-      // 2. Add security check for dept_admin
       if (req.user.role === "dept_admin") {
         if (eventRow.department_id !== req.user.department_id) {
           return res
@@ -45,7 +43,7 @@ router.get(
         }
       }
 
-      const regRow = (
+      const totals = (
         await db.query(
           `
             SELECT COUNT(*)::int AS registrations,
@@ -56,34 +54,44 @@ router.get(
         )
       ).rows[0];
 
-      const recent = (
+      // --- QUERY CHANGED: Fetch ALL registrations with user details, no limit ---
+      const registrations = (
         await db.query(
           `
-            SELECT s.pass_id, s.slot_no, s.attended, s.created_at
+            SELECT 
+                s.pass_id, 
+                s.slot_no, 
+                s.attended, 
+                s.created_at,
+                p.user_email,
+                u.name AS user_name,
+                u.phone AS user_phone,
+                u.institution AS user_institution
             FROM slots s
+            LEFT JOIN passes p ON s.pass_id = p.pass_id
+            LEFT JOIN users u ON p.user_email = u.email
             WHERE s.event_id = $1
             ORDER BY s.created_at DESC
-            LIMIT 100
           `,
           [eventId]
         )
       ).rows;
 
-      // 3. Fetch the list of assigned event admins
-      const adminRes = await db.query(
-        'SELECT name, personal_email, phone FROM admin_profiles WHERE event_id = $1',
-        [eventId]
-      );
-      const eventAdmins = adminRes.rows;
+      const eventAdmins = (
+        await db.query(
+          'SELECT name, personal_email, phone FROM admin_profiles WHERE event_id = $1',
+          [eventId]
+        )
+      ).rows;
 
       return res.json({
         event: eventRow,
         totals: {
-          registrations: regRow.registrations,
-          attendance: regRow.attendance,
+          registrations: totals.registrations,
+          attendance: totals.attendance,
         },
-        recent_slots: recent,
-        event_admins: eventAdmins, // 4. Add admins to the JSON response
+        registrations: registrations, // --- RESPONSE KEY UPDATED ---
+        event_admins: eventAdmins,
       });
     } catch (err) {
       console.error("analytics/event error", err);
