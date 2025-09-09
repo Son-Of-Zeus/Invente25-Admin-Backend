@@ -5,6 +5,7 @@ const axios = require('axios');
 const { ImageAnnotatorClient } = require('@google-cloud/vision');
 const { createPaymentHeaders } = require('../paymentAuth');
 const db = require('../db');
+const { uploadReceipt } = require('../utils/s3Uploader');
 
 const router = express.Router();
 
@@ -36,6 +37,32 @@ try {
   // Fallback to default credentials (GOOGLE_APPLICATION_CREDENTIALS)
   visionClient = new ImageAnnotatorClient();
 }
+
+// --- S3 INTEGRATION START ---
+/**
+ * Helper function to handle the upload and database insertion.
+ * This is non-critical; it logs errors but does not fail the request.
+ * @param {string} paymentID The extracted payment ID.
+ * @param {object} file The file object from multer.
+ */
+async function handleReceiptUpload(paymentID, file) {
+  if (!paymentID || !file) return;
+
+  try {
+    const s3Url = await uploadReceipt(file.buffer, paymentID, file.mimetype);
+    if (s3Url) {
+      // Save the URL to the new database table
+      await db.query(
+        'INSERT INTO receipt_uploads (payment_id, s3_url) VALUES ($1, $2) ON CONFLICT (payment_id) DO NOTHING',
+        [paymentID, s3Url]
+      );
+    }
+  } catch (dbError) {
+    console.error(`Failed to save S3 URL to DB for paymentID ${paymentID}:`, dbError);
+  }
+}
+// --- S3 INTEGRATION END ---
+
 
 // GET endpoint to check hackathon track availability
 router.get('/hackathon/availability', async (req, res) => {
@@ -74,6 +101,10 @@ router.post('/receipt', fileFields, async (req, res) => {
 
     if (body.paymentID && PAYMENT_ID_REGEX.test(body.paymentID)) {
       await forwardToPaymentService(body);
+
+      if (file) {
+        await handleReceiptUpload(body.paymentID, file)
+      }
       return res.json({ success: true, paymentID: body.paymentID, forwarded: true });
     }
 
@@ -118,6 +149,8 @@ router.post('/receipt', fileFields, async (req, res) => {
     }
     const paymentID = match[0];
     const payload = { ...body, paymentID };
+
+    await handleReceiptUpload(paymentID, file)
 
     await forwardToPaymentService(payload);
 
@@ -168,7 +201,9 @@ router.post('/hackathon-receipt', fileFields, async (req, res) => {
           }
         }
       }
-      
+      if (file) {
+        await handleReceiptUpload(body.paymentID, file)
+      }
       // The 'body' object contains only the parsed JSON, so the file is not forwarded.
       await forwardToHackathonPaymentService(body);
       return res.json({ success: true, paymentID: body.paymentID, forwarded: true });
@@ -215,6 +250,8 @@ router.post('/hackathon-receipt', fileFields, async (req, res) => {
 
     // The payload is built from the parsed 'body' and the OCR'd paymentID
     const payload = { ...body, paymentID };
+
+    await handleReceiptUpload(paymentID, file)
 
     // Check track availability before forwarding to payment service
     if (payload.track) {
@@ -269,6 +306,7 @@ async function forwardToPaymentService(payload) {
   }
 
   await axios.post(process.env.PAYMENT_SERVICE_URL, forwardBody, { headers: paymentHeaders });
+  await forwardToReceiptService(forwardBody);
 }
 
 async function forwardToHackathonPaymentService(payload) {
@@ -281,8 +319,109 @@ async function forwardToHackathonPaymentService(payload) {
   delete forwardBody.receipt;
 
   await axios.post(process.env.HACKATHON_PAYMENT_SERVICE_URL, forwardBody, { headers: paymentHeaders });
+  await forwardToReceiptServiceForHackathon(forwardBody);
 }
 
 module.exports = router;
 
 
+
+
+async function forwardToReceiptService(payload) {
+  if (!process.env.RECEIPT_SERVICE_URL) {
+    console.warn('RECEIPT_SERVICE_URL not set; skipping forwarding to receipt service.');
+    return;
+  }
+
+  // normalize names and ensure paid timestamp exists
+  const ts = new Date().toISOString();
+  const p = { ...payload };
+
+  const email = p.email || p.emailID || p.emailId || p.uploaderEmail || null;
+  const phone = p.phone || p.phoneNumber || p.phoneNumber || null;
+  const method = p.method || p.paymentMethod || 'online';
+  const amount = p.amount !== undefined ? Number(p.amount) : (p.total ? Number(p.total) : null);
+
+  // Accept either camelCase or snake_case and provide both to be safe
+  const paidOnVal = p.paidOn || p.paid_on || p.paid_on_ts || p.paidOnTimestamp || ts;
+
+  // Normalize eventBookingDetails if it's a string
+  let eventBookingDetails = p.eventBookingDetails;
+  if (typeof eventBookingDetails === 'string') {
+    try { eventBookingDetails = JSON.parse(eventBookingDetails); } catch (_) { /* leave as-is */ }
+  }
+
+  const forwardBody = {
+    // common variants
+    paymentID: p.paymentID || p.paymentId || p.payment_id,
+    payment_id: p.paymentID || p.paymentId || p.payment_id,
+    // contact
+    emailID: email,
+    phoneNumber: phone,
+
+    // amounts / method / booking
+    method: 'online',
+    amount,
+    eventBookingDetails,
+
+    // timestamps — provide both keys so receivers map correctly
+    paidOn: paidOnVal,
+    paid_on: paidOnVal,
+    createdAt: p.createdAt || p.created_at || ts,
+  };
+
+  try {
+    await axios.post(process.env.RECEIPT_SERVICE_URL, forwardBody);
+  } catch (err) {
+    // Log but do not throw. Receipt service should not break the caller.
+    console.error('forwardToReceiptService failed:', err?.message || err);
+  }
+}
+
+
+// helper: send the exact fields the receipt service expects for hackathon requests
+async function forwardToReceiptServiceForHackathon(forwardBody) {
+  if (!process.env.RECEIPT_SERVICE_URL) {
+    console.warn('RECEIPT_SERVICE_URL not set; skipping forwarding to receipt service.');
+    return;
+  }
+
+  const ts = new Date().toISOString();
+
+  const emailID =
+    forwardBody.leader_email ||
+    forwardBody.leaderEmail ||
+    forwardBody.leader ||
+    forwardBody.emailID ||
+    forwardBody.email ||
+    null;
+
+  const paymentID = forwardBody.paymentID || forwardBody.paymentId || forwardBody.payment_id || null;
+
+  // amount is expected to be present in the body (user said they'd include it)
+  const amount = forwardBody.amount !== undefined ? forwardBody.amount : null;
+
+  // phoneNumber: take the first value from member_phones if present, otherwise use provided phoneNumber/phone
+  let phoneNumber = null;
+  if (forwardBody.member_phones && typeof forwardBody.member_phones === 'object') {
+    const vals = Object.values(forwardBody.member_phones);
+    if (vals.length) phoneNumber = vals[0];
+  }
+  phoneNumber = phoneNumber || forwardBody.phoneNumber || forwardBody.phone || null;
+
+  const payload = {
+    emailID,
+    paymentID,
+    paidOn: ts,
+    method: 'online',
+    amount,
+    phoneNumber
+  };
+
+  try {
+    await axios.post(process.env.RECEIPT_SERVICE_URL, payload);
+  } catch (err) {
+    console.error('forwardToReceiptServiceForHackathon failed:', err?.message || err);
+    // non-fatal: do not throw, keep main flow resilient
+  }
+}
