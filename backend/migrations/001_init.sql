@@ -39,6 +39,12 @@ CREATE TABLE receipts (
   passGenerated BOOLEAN DEFAULT FALSE -- whether a pass has been generated for this payment
 );
 
+CREATE TABLE receipt_uploads (
+    payment_id VARCHAR(100) PRIMARY KEY,
+    s3_url TEXT NOT NULL,
+    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+);
 
 CREATE TABLE passes (
   pass_id TEXT PRIMARY KEY, -- this is uuidv4 rn, gotta change to uuid7 later
@@ -204,17 +210,3 @@ SELECT
   'volunteer',
   id
 FROM dept_data;
-
--- legacy --- old passes table
-
--- so maybe verified and payment_id can be used for cash payments and payment_id for online payments
-
--- no more mark as verified. the form page replaces it.
--- CREATE TABLE passes (
---   id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- this is uuidv4 rn, gotta change to uuid7 later
---   user_email TEXT REFERENCES users(email),
---   payment_method TEXT NOT NULL,  -- online or cash
---   verified BOOLEAN DEFAULT FALSE, -- whether payment has been verified
---   issued BOOLEAN DEFAULT FALSE, -- whether qr code has been sent 
---   created_at TIMESTAMPTZ DEFAULT now()
--- );

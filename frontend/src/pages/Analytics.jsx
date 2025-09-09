@@ -44,11 +44,7 @@ const COLORS = [
 // +++ START: NEW MODAL COMPONENT +++
 function VolunteerDetailModal({ volunteer, onClose }) {
   const { authAxios } = useAuth();
-  const [details, setDetails] = useState({
-    loading: true,
-    data: null,
-    error: null,
-  });
+  const [details, setDetails] = useState({ loading: true, data: null, error: null });
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -56,37 +52,62 @@ function VolunteerDetailModal({ volunteer, onClose }) {
       try {
         setDetails({ loading: true, data: null, error: null });
         const encodedEmail = encodeURIComponent(volunteer.personal_email);
-        const response = await authAxios.get(
-          `/analytics/volunteer/${encodedEmail}`
-        );
+        const response = await authAxios.get(`/analytics/volunteer/${encodedEmail}`);
         setDetails({ loading: false, data: response.data, error: null });
       } catch (e) {
-        setDetails({
-          loading: false,
-          data: null,
-          error: e.response?.data?.error || "Failed to load details.",
-        });
+        setDetails({ loading: false, data: null, error: e.response?.data?.error || "Failed to load details." });
       }
     };
     fetchDetails();
   }, [volunteer, authAxios]);
 
+  // +++ NEW: Calculate total revenue collected +++
+  const totalRevenue = useMemo(() => {
+    if (!details.data) return 0;
+    return details.data.reduce((sum, pass) => sum + Number(pass.amount), 0);
+  }, [details.data]);
+
+  // +++ NEW: Export handler for volunteer details +++
+  const handleExport = () => {
+    if (!details.data) return;
+    const dataToExport = details.data.map(p => ({
+      'Pass ID': p.pass_id,
+      'Participant Email': p.user_email,
+      'Participant Name': p.user_name,
+      'Amount': p.amount,
+      'Registered On': new Date(p.paid_on).toLocaleString(),
+      'Assigned Events': p.event_names,
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Pass Details");
+    XLSX.writeFile(workbook, `invente-volunteer-passes-${volunteer.name.replace(/ /g, '_')}-${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-        <div className="flex justify-between items-center p-4 border-b">
+        <div className="flex justify-between items-start p-4 border-b">
           <div>
-            <h2 className="text-xl font-bold text-gray-800">
-              Registration Details for {volunteer.name}
-            </h2>
+            <h2 className="text-xl font-bold text-gray-800">Registration Details for {volunteer.name}</h2>
             <p className="text-sm text-gray-500">{volunteer.personal_email}</p>
+            {/* +++ NEW: Display Total Revenue +++ */}
+            <div className="mt-2 text-lg font-semibold text-green-600 bg-green-50 px-3 py-1 rounded-md inline-block">
+              Total Collected: {formatCurrency(totalRevenue)}
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full hover:bg-gray-200"
-          >
-            <XMarkIcon className="h-6 w-6 text-gray-600" />
-          </button>
+          {/* +++ NEW: Export Button +++ */}
+          <div className="flex items-center space-x-2">
+            <button
+                onClick={handleExport}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+            >
+              Export Excel
+            </button>
+            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200">
+              <XMarkIcon className="h-6 w-6 text-gray-600" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto">
@@ -234,6 +255,24 @@ function EventDetailModal({ event, onClose }) {
     fetchEventDetails();
   }, [event, authAxios]);
 
+  const handleExport = () => {
+    if (!details.data?.registrations) return;
+    const dataToExport = details.data.registrations.map(r => ({
+      'Pass ID': r.pass_id,
+      'Slot No': r.slot_no,
+      'Attended': r.attended ? 'Yes' : 'No',
+      'Registration Time': new Date(r.created_at).toLocaleString(),
+      'Participant Name': r.user_name,
+      'Email': r.user_email,
+      'Phone': r.user_phone,
+      'Institution': r.user_institution,
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Registrations");
+    XLSX.writeFile(workbook, `invente-event-registrants-${event.event_name.replace(/ /g, '_')}-${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
   const d = details.data;
 
   return (
@@ -243,12 +282,18 @@ function EventDetailModal({ event, onClose }) {
           <h2 className="text-xl font-bold text-gray-800">
             Detailed Analytics for {event.event_name}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full hover:bg-gray-200"
-          >
-            <XMarkIcon className="h-6 w-6 text-gray-600" />
-          </button>
+
+          <div className="flex items-center space-x-2">
+            {d && <button
+              onClick={handleExport}
+              className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+            >
+              Export Registrants
+            </button>}
+            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200">
+              <XMarkIcon className="h-6 w-6 text-gray-600" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto p-6 space-y-6">
@@ -332,41 +377,37 @@ function EventDetailModal({ event, onClose }) {
               {/* Recent Registrations Table */}
               <div className="bg-white rounded-lg border">
                 <div className="p-4 border-b">
-                  <h3 className="text-lg font-semibold">
-                    Recent Registrations
-                  </h3>
+                  <h3 className="text-lg font-semibold">All Registrations</h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-2 text-left font-medium text-gray-500">
-                          Pass
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium text-gray-500">
-                          Slot
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium text-gray-500">
-                          Attended
-                        </th>
-                        <th className="px-4 py-2 text-left font-medium text-gray-500">
-                          Time
-                        </th>
+                        {/* +++ NEW: Table Headers +++ */}
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Participant</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Contact</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Institution</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Pass / Slot</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Attended</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Time</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {d.recent_slots.map((r) => (
+                      {/* +++ MODIFIED: Table body using `registrations` key +++ */}
+                      {d.registrations.map((r) => (
                         <tr key={`${r.pass_id}-${r.slot_no}`}>
+                          <td className="px-4 py-3">
+                            <div>{r.user_name || '--'}</div>
+                            <div className="text-xs text-gray-500">{r.user_email}</div>
+                          </td>
+                          <td className="px-4 py-3">{r.user_phone || '--'}</td>
+                          <td className="px-4 py-3">{r.user_institution || '--'}</td>
                           <td className="px-4 py-3 font-mono text-xs">
-                            {r.pass_id}
+                            <div>{r.pass_id}</div>
+                            <div>Slot: {r.slot_no}</div>
                           </td>
-                          <td className="px-4 py-3">{r.slot_no}</td>
-                          <td className="px-4 py-3">
-                            {r.attended ? "Yes" : "No"}
-                          </td>
-                          <td className="px-4 py-3">
-                            {new Date(r.created_at).toLocaleString()}
-                          </td>
+                          <td className="px-4 py-3">{r.attended ? "Yes" : "No"}</td>
+                          <td className="px-4 py-3">{new Date(r.created_at).toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -653,6 +694,23 @@ function DepartmentDetailModal({ department, onEventClick, onClose }) {
     fetchDeptDetails();
   }, [department, authAxios]);
 
+  const handleExport = () => {
+    if (!details.data?.per_event) return;
+    const dataToExport = details.data.per_event.map(ev => ({
+      'Event ID': ev.event_id,
+      'Event Name': ev.event_name,
+      'Type': ev.event_type,
+      'Registrations': ev.registrations,
+      'Attendance': ev.attendance,
+      'Revenue': ev.revenue,
+      'Attendance Rate (%)': ev.registrations > 0 ? Math.round((ev.attendance / ev.registrations) * 100) : 0,
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Event Performance");
+    XLSX.writeFile(workbook, `invente-dept-events-${department.department_name.replace(/ /g, '_')}-${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
@@ -660,12 +718,17 @@ function DepartmentDetailModal({ department, onEventClick, onClose }) {
           <h2 className="text-xl font-bold text-gray-800">
             Detailed Analytics for {department.department_name}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full hover:bg-gray-200"
-          >
-            <XMarkIcon className="h-6 w-6 text-gray-600" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {details.data && <button
+              onClick={handleExport}
+              className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+            >
+              Export Events Table
+            </button>}
+            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200">
+              <XMarkIcon className="h-6 w-6 text-gray-600" />
+            </button>
+          </div>
         </div>
         <div className="overflow-y-auto p-6 bg-gray-50">
           {details.loading && (
@@ -926,6 +989,22 @@ export default function AnalyticsPage() {
       console.error("Export failed:", e);
     }
   };
+
+    // +++ NEW: Export handler for the main volunteer summary table +++
+    const handleVolunteersExport = () => {
+      if (!stats?.data?.central_volunteers) return;
+      const dataToExport = stats.data.central_volunteers.map(vol => ({
+        'Volunteer Name': vol.name,
+        'Email': vol.personal_email,
+        'Phone': vol.phone,
+        'Passes Assigned': vol.passes_assigned,
+        'Revenue Collected': vol.total_collected,
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Central Volunteers");
+      XLSX.writeFile(workbook, `invente-central-volunteers-${new Date().toISOString().split("T")[0]}.xlsx`);
+    };
 
   if (loading)
     return (
@@ -1574,13 +1653,17 @@ export default function AnalyticsPage() {
       {activeTab === "volunteers" && (
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow-sm border">
-            <div className="p-6 border-b">
-              <h3 className="text-lg font-semibold">
-                Central Volunteer Performance
-              </h3>
-              <div className="text-sm text-gray-600 mt-1">
-                Activity and revenue collected by each central volunteer.
+          <div className="p-6 border-b flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold">Central Volunteer Performance</h3>
+                <div className="text-sm text-gray-600 mt-1">Activity and revenue collected by each central volunteer.</div>
               </div>
+              <button
+                onClick={handleVolunteersExport}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+              >
+                Export Table
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
