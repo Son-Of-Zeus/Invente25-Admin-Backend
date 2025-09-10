@@ -66,7 +66,7 @@ export default function Home() {
     },
     {
       title: "Database",
-      desc: "Access the Database",
+      desc: "Access the Database. Danger!",
       to: "/admin/dump",
       roles: ["super_admin"]
     }
