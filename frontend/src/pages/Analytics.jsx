@@ -942,6 +942,8 @@ export default function AnalyticsPage() {
   const [selectedVolunteer, setSelectedVolunteer] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedDepartment, setSelectedDepartment] = useState(null);
+  const [trackFilter, setTrackFilter] = useState("");
+  const [selectedTeam, setSelectedTeam] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -1004,6 +1006,83 @@ export default function AnalyticsPage() {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Central Volunteers");
       XLSX.writeFile(workbook, `invente-central-volunteers-${new Date().toISOString().split("T")[0]}.xlsx`);
+    };
+
+    // Export handler for hackathon teams with detailed member information
+    const handleExportHackathon = () => {
+      if (!stats?.data?.hackathons?.recent_teams) return;
+      
+      // Filter teams based on current track filter
+      const teamsToExport = stats.data.hackathons.recent_teams
+        .filter(team => !trackFilter || team.track.toLowerCase() === trackFilter);
+
+      // Find maximum number of team members
+      const maxMembers = Math.max(...teamsToExport.map(team => team.members?.length || 0));
+
+      const dataToExport = teamsToExport.map(team => {
+        // Base team information
+        const baseData = {
+          'Team Name': team.team_name,
+          'Team ID': team.team_id,
+          'Track': team.track,
+          'Domain': team.domain_name || '-',
+          'Team Size': team.team_size,
+          'Status': team.attended ? 'Attended' : 'Registered',
+          'Registration Date': new Date(team.created_at).toLocaleDateString(),
+          'Problem Statement': team.problem_statement || '-',
+        };
+
+        // Add member details in separate columns
+        for (let i = 0; i < maxMembers; i++) {
+          const member = team.members?.[i] || {};
+          baseData[`Member ${i + 1} Name`] = member.name || '';
+          baseData[`Member ${i + 1} Email`] = member.email || '';
+          baseData[`Member ${i + 1} Phone`] = member.phone || '';
+          baseData[`Member ${i + 1} Institution`] = member.institution || '';
+          baseData[`Member ${i + 1} Department`] = member.department || '';
+          baseData[`Member ${i + 1} Year`] = member.year || '';
+        }
+
+        return baseData;
+      });
+
+      // Create worksheet with the data
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+
+      // Set column widths for better readability
+      const columnWidths = {
+        'A': 20, // Team Name
+        'B': 15, // Team ID
+        'C': 15, // Track
+        'D': 20, // Domain
+        'E': 10, // Team Size
+        'F': 12, // Status
+        'G': 15, // Registration Date
+        'H': 40, // Problem Statement
+      };
+
+      // Start from I column for member details (assuming 8 columns for base data)
+      const memberColumns = maxMembers * 6; // 6 columns per member
+      for (let i = 0; i < memberColumns; i++) {
+        const col = String.fromCharCode(73 + i); // Start from I
+        columnWidths[col] = 20;
+      }
+
+      worksheet['!cols'] = Object.keys(columnWidths).map(key => ({
+        wch: columnWidths[key]
+      }));
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Hackathon Teams");
+      
+      // Generate filename with current date
+      const filename = `invente-hackathon-teams-${new Date().toISOString().split("T")[0]}.xlsx`;
+      
+      try {
+        XLSX.writeFile(workbook, filename);
+      } catch (error) {
+        console.error("Failed to export Excel file:", error);
+      }
     };
 
   if (loading)
@@ -1533,9 +1612,30 @@ export default function AnalyticsPage() {
 
           <div className="bg-white rounded-lg shadow-sm border">
             <div className="p-6 border-b">
-              <h3 className="text-lg font-semibold">Recent Teams</h3>
-              <div className="text-sm text-gray-600 mt-1">
-                Latest hackathon team registrations
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-semibold">Hackathon Teams</h3>
+                  <div className="text-sm text-gray-600 mt-1">
+                    All registered hackathon teams
+                  </div>
+                </div>
+                <div className="flex space-x-4 items-center">
+                  <select 
+                    className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    onChange={e => setTrackFilter(e.target.value)}
+                    value={trackFilter}
+                  >
+                    <option value="">All Tracks</option>
+                    <option value="hardware">Hardware</option>
+                    <option value="software">Software</option>
+                  </select>
+                  <button
+                    onClick={handleExportHackathon}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Export Excel
+                  </button>
+                </div>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -1549,6 +1649,9 @@ export default function AnalyticsPage() {
                       Track
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Domain
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Size
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1560,8 +1663,14 @@ export default function AnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {c.hackathons.recent_teams.slice(0, 10).map((team) => (
-                    <tr key={team.team_id} className="hover:bg-gray-50">
+                  {c.hackathons.recent_teams
+                    .filter(team => !trackFilter || team.track.toLowerCase() === trackFilter)
+                    .map((team) => (
+                    <tr 
+                      key={team.team_id} 
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => setSelectedTeam(team)}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
                           {team.team_name}
@@ -1572,6 +1681,9 @@ export default function AnalyticsPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {team.track}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {team.domain_name || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {team.team_size} members
@@ -1596,6 +1708,77 @@ export default function AnalyticsPage() {
               </table>
             </div>
           </div>
+          
+          {/* Team Details Modal */}
+          {selectedTeam && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+              <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center p-6 border-b">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-800">{selectedTeam.team_name}</h2>
+                    <p className="text-sm text-gray-500">Team ID: {selectedTeam.team_id}</p>
+                  </div>
+                  <button onClick={() => setSelectedTeam(null)} className="p-2 hover:bg-gray-100 rounded-full">
+                    <XMarkIcon className="h-6 w-6 text-gray-600" />
+                  </button>
+                </div>
+                <div className="p-6 overflow-y-auto">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">Team Information</h3>
+                      <dl className="space-y-2">
+                        <div>
+                          <dt className="text-sm font-medium text-gray-500">Track</dt>
+                          <dd className="mt-1 text-sm text-gray-900">{selectedTeam.track}</dd>
+                        </div>
+                        {selectedTeam.domain_name && (
+                          <div>
+                            <dt className="text-sm font-medium text-gray-500">Domain</dt>
+                            <dd className="mt-1 text-sm text-gray-900">{selectedTeam.domain_name}</dd>
+                          </div>
+                        )}
+                        {selectedTeam.problem_statement && (
+                          <div>
+                            <dt className="text-sm font-medium text-gray-500">Problem Statement</dt>
+                            <dd className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{selectedTeam.problem_statement}</dd>
+                          </div>
+                        )}
+                        <div>
+                          <dt className="text-sm font-medium text-gray-500">Registration Status</dt>
+                          <dd className="mt-1">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              selectedTeam.attended
+                                ? "bg-green-100 text-green-800"
+                                : "bg-yellow-100 text-yellow-800"
+                            }`}>
+                              {selectedTeam.attended ? "Attended" : "Registered"}
+                            </span>
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">Team Members</h3>
+                      <div className="space-y-4">
+                        {selectedTeam.members?.map((member, idx) => (
+                          <div key={member.email} className="bg-gray-50 p-4 rounded-lg">
+                            <div className="font-medium">{member.name}</div>
+                            <div className="text-sm text-gray-600 mt-1 space-y-1">
+                              <div>Email: {member.email}</div>
+                              <div>Phone: {member.phone || 'N/A'}</div>
+                              <div>Institution: {member.institution || 'N/A'}</div>
+                              <div>Department: {member.department || 'N/A'}</div>
+                              <div>Year: {member.year || 'N/A'}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -309,8 +309,15 @@ router.get(
   requireRole(["super_admin"]),
   async (req, res) => {
     try {
-      // Basic totals
-      const totalsRes = (
+      // Check if WORKSHOP department exists
+      const workshopDept = await db.query("SELECT id FROM departments WHERE name = 'WORKSHOP'");
+      if (workshopDept.rows.length === 0) {
+        return res.status(500).json({ error: "WORKSHOP department not found" });
+      }
+
+    
+        // Basic totals
+        const totalsRes = (
         await db.query(`
       SELECT
         (SELECT COUNT(*) FROM departments WHERE name != 'WORKSHOP')::int AS total_departments,
@@ -461,18 +468,52 @@ router.get(
 
       const hackathonDetails = (
         await db.query(`
+      WITH team_members AS (
+        SELECT 
+          hd.team_id,
+          jsonb_agg(jsonb_build_object(
+            'email', hd.email,
+            'name', hd.full_name,
+            'institution', hd.institution,
+            'phone', hd.phone_number,
+            'gender', hd.gender,
+            'department', hd.department,
+            'year', hd.year_of_study
+          )) AS members
+        FROM hack_reg_details hd
+        GROUP BY hd.team_id
+      ),
+      team_track_info AS (
+        SELECT
+          t.team_id,
+          t.domain_name,
+          t.problem_statement
+        FROM track t
+      ),
+      team_sizes AS (
+        SELECT 
+          team_id,
+          COUNT(email)::int as member_count
+        FROM hack_reg_details
+        GROUP BY team_id
+      )
       SELECT
         h.team_id,
         h.team_name,
         h.track,
         h.attended,
         h.created_at,
-        COUNT(hd.email)::int AS team_size
+        h.payment_id,
+        h.ticket_issued,
+        COALESCE(ts.member_count, 0) as team_size,
+        tti.domain_name,
+        tti.problem_statement,
+        tm.members
       FROM hack_passes h
-      LEFT JOIN hack_reg_details hd ON h.team_id = hd.team_id
-      GROUP BY h.team_id, h.team_name, h.track, h.attended, h.created_at
+      LEFT JOIN team_sizes ts ON h.team_id = ts.team_id
+      LEFT JOIN team_track_info tti ON h.team_id = tti.team_id
+      LEFT JOIN team_members tm ON h.team_id = tm.team_id
       ORDER BY h.created_at DESC
-      LIMIT 50
     `)
       ).rows;
 
