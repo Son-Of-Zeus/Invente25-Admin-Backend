@@ -306,7 +306,7 @@ router.get(
 router.get(
   "/college",
   authMiddleware,
-  requireRole(["super_admin"]),
+  requireRole(["super_admin", "dept_admin"]),
   async (req, res) => {
     try {
       // Check if WORKSHOP department exists
@@ -956,7 +956,7 @@ router.get(
 router.get(
   "/hackathons",
   authMiddleware,
-  requireRole(["super_admin"]),
+  requireRole(["super_admin", "dept_admin"]),
   async (req, res) => {
     try {
       const trackBreakdown = (
