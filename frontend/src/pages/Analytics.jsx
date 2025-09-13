@@ -429,6 +429,99 @@ function DepartmentViewContent({
   refreshTime,
   onEventClick,
 }) {
+  const [activeTab, setActiveTab] = useState("department");
+  const [selectedTeam, setSelectedTeam] = useState(null);
+  const [trackFilter, setTrackFilter] = useState("");
+  
+  // Check if hackathon data is available (ECE department)
+  const hasHackathonData = d.hackathons && d.hackathons.track_breakdown;
+  
+  const tabs = [
+    { id: "department", label: "Department Analytics", icon: "🏢" },
+  ];
+  
+  if (hasHackathonData) {
+    tabs.push({ id: "hackathons", label: "Hackathons", icon: "💻" });
+  }
+
+  // Export handler for hackathon teams with detailed member information
+  const handleExportHackathon = () => {
+    if (!d?.hackathons?.recent_teams) return;
+    
+    // Filter teams based on current track filter
+    const teamsToExport = d.hackathons.recent_teams
+      .filter(team => !trackFilter || team.track.toLowerCase() === trackFilter);
+
+    // Find maximum number of team members
+    const maxMembers = Math.max(...teamsToExport.map(team => team.members?.length || 0));
+
+    const dataToExport = teamsToExport.map(team => {
+      // Base team information
+      const baseData = {
+        'Team Name': team.team_name,
+        'Team ID': team.team_id,
+        'Track': team.track,
+        'Domain': team.domain_name || '-',
+        'Team Size': team.team_size,
+        'Status': team.attended ? 'Attended' : 'Registered',
+        'Registration Date': new Date(team.created_at).toLocaleDateString(),
+        'Problem Statement': team.problem_statement || '-',
+      };
+
+      // Add member details in separate columns
+      for (let i = 0; i < maxMembers; i++) {
+        const member = team.members?.[i] || {};
+        baseData[`Member ${i + 1} Name`] = member.name || '';
+        baseData[`Member ${i + 1} Email`] = member.email || '';
+        baseData[`Member ${i + 1} Phone`] = member.phone || '';
+        baseData[`Member ${i + 1} Institution`] = member.institution || '';
+        baseData[`Member ${i + 1} Department`] = member.department || '';
+        baseData[`Member ${i + 1} Year`] = member.year || '';
+      }
+
+      return baseData;
+    });
+
+    // Create worksheet with the data
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+
+    // Set column widths for better readability
+    const columnWidths = {
+      'A': 20, // Team Name
+      'B': 15, // Team ID
+      'C': 15, // Track
+      'D': 20, // Domain
+      'E': 10, // Team Size
+      'F': 12, // Status
+      'G': 15, // Registration Date
+      'H': 40, // Problem Statement
+    };
+
+    // Start from I column for member details (assuming 8 columns for base data)
+    const memberColumns = maxMembers * 6; // 6 columns per member
+    for (let i = 0; i < memberColumns; i++) {
+      const col = String.fromCharCode(73 + i); // Start from I
+      columnWidths[col] = 20;
+    }
+
+    worksheet['!cols'] = Object.keys(columnWidths).map(key => ({
+      wch: columnWidths[key]
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Hackathon Teams");
+    
+    // Generate filename with current date and track filter
+    const trackSuffix = trackFilter ? `-${trackFilter}` : '';
+    const filename = `invente-hackathon-teams${trackSuffix}-${new Date().toISOString().split("T")[0]}.xlsx`;
+    
+    try {
+      XLSX.writeFile(workbook, filename);
+    } catch (error) {
+      console.error("Failed to export Excel file:", error);
+    }
+  };
+
   return (
     <>
       <div className="flex justify-between items-center mb-6">
@@ -440,8 +533,35 @@ function DepartmentViewContent({
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      {/* Tabs - only show if there are multiple tabs */}
+      {hasHackathonData && (
+        <div className="mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === tab.id
+                      ? "border-indigo-500 text-indigo-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  <span className="mr-2">{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      )}
+
+      {/* Department Analytics Tab */}
+      {activeTab === "department" && (
+        <>
+          {/* Key Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-sm border">
           <div className="text-sm text-gray-500 mb-1">Total Events</div>
           <div className="text-3xl font-bold text-blue-600">
@@ -584,9 +704,33 @@ function DepartmentViewContent({
       {/* Events Table */}
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="p-6 border-b">
-          <h3 className="text-lg font-semibold">Event Performance</h3>
-          <div className="text-sm text-gray-600 mt-1">
-            Detailed breakdown of all events
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold">Event Performance</h3>
+              <div className="text-sm text-gray-600 mt-1">
+                Detailed breakdown of all events
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const dataToExport = d.per_event.map(ev => ({
+                  'Event ID': ev.event_id,
+                  'Event Name': ev.event_name,
+                  'Type': ev.event_type,
+                  'Registrations': ev.registrations,
+                  'Attendance': ev.attendance,
+                  'Revenue': ev.revenue,
+                  'Attendance Rate (%)': ev.registrations > 0 ? Math.round((ev.attendance / ev.registrations) * 100) : 0,
+                }));
+                const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Event Performance");
+                XLSX.writeFile(workbook, `invente-dept-events-${new Date().toISOString().split("T")[0]}.xlsx`);
+              }}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+            >
+              Export Events
+            </button>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -661,6 +805,272 @@ function DepartmentViewContent({
           </table>
         </div>
       </div>
+        </>
+      )}
+
+      {/* Hackathons Tab */}
+      {activeTab === "hackathons" && hasHackathonData && (
+        <>
+          {/* Hackathon Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="text-sm text-gray-500 mb-1">Total Teams</div>
+              <div className="text-3xl font-bold text-blue-600">
+                {fmt(d.hackathons.summary.total_teams)}
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="text-sm text-gray-500 mb-1">Teams Attended</div>
+              <div className="text-3xl font-bold text-green-600">
+                {fmt(d.hackathons.summary.total_attended)}
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="text-sm text-gray-500 mb-1">Total Participants</div>
+              <div className="text-3xl font-bold text-purple-600">
+                {fmt(d.hackathons.summary.total_participants)}
+              </div>
+            </div>
+          </div>
+
+          {/* Track Breakdown Chart */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <h3 className="text-lg font-semibold mb-4">Track Breakdown</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={d.hackathons.track_breakdown}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="track" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="team_count" fill="#3B82F6" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <h3 className="text-lg font-semibold mb-4">Track Performance</h3>
+              <div className="space-y-4">
+                {d.hackathons.track_breakdown.map((track) => (
+                  <div key={track.track} className="p-4 bg-gray-50 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="font-medium text-gray-900">
+                          {track.track}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {track.team_count} teams • {track.attended_teams}{" "}
+                          attended
+                        </div>
+                      </div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        {track.team_count}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Hackathon Teams Table */}
+          <div className="bg-white rounded-lg shadow-sm border">
+            <div className="p-6 border-b">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-semibold">Hackathon Teams</h3>
+                  <div className="text-sm text-gray-600 mt-1">
+                    All registered hackathon teams
+                  </div>
+                </div>
+                <div className="flex space-x-4 items-center">
+                  <select 
+                    className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    onChange={e => setTrackFilter(e.target.value)}
+                    value={trackFilter}
+                  >
+                    <option value="">All Tracks</option>
+                    <option value="hardware">Hardware</option>
+                    <option value="software">Software</option>
+                  </select>
+                  <button
+                    onClick={handleExportHackathon}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Export Excel
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Team
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Track
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Domain
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Size
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Registered
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {d.hackathons.recent_teams
+                    .filter(team => !trackFilter || team.track.toLowerCase() === trackFilter)
+                    .map((team) => (
+                    <tr 
+                      key={team.team_id} 
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => setSelectedTeam(team)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {team.team_name}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          ID: {team.team_id}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
+                          {team.track}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {team.domain_name || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {team.team_size} members
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          team.attended
+                            ? "bg-green-100 text-green-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}>
+                          {team.attended ? "Attended" : "Registered"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(team.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Team Details Modal */}
+      {selectedTeam && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-start">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">{selectedTeam.team_name}</h2>
+                <p className="text-sm text-gray-500">Team ID: {selectedTeam.team_id}</p>
+              </div>
+              <button onClick={() => setSelectedTeam(null)} className="p-2 hover:bg-gray-100 rounded-full">
+                <XMarkIcon className="h-6 w-6 text-gray-500" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <dl className="space-y-4">
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Track</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{selectedTeam.track}</dd>
+                    </div>
+                    {selectedTeam.domain_name && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Domain</dt>
+                        <dd className="mt-1 text-sm text-gray-900">{selectedTeam.domain_name}</dd>
+                      </div>
+                    )}
+                    {selectedTeam.problem_statement && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Problem Statement</dt>
+                        <dd className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{selectedTeam.problem_statement}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+                <div>
+                  <dl className="space-y-4">
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Status</dt>
+                      <dd className="mt-1">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          selectedTeam.attended
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {selectedTeam.attended ? "Attended" : "Registered"}
+                        </span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Team Size</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{selectedTeam.team_size} members</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Registration Date</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{new Date(selectedTeam.created_at).toLocaleDateString()}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Team Members</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {selectedTeam.members?.map((member, idx) => (
+                    <div key={idx} className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-medium text-gray-900">{member.name}</h4>
+                      <p className="text-sm text-gray-600">{member.email}</p>
+                      {member.phone && <p className="text-sm text-gray-600">{member.phone}</p>}
+                      {member.institution && <p className="text-sm text-gray-600">{member.institution}</p>}
+                      <div className="mt-2 flex gap-2 text-xs">
+                        {member.department && (
+                          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                            {member.department}
+                          </span>
+                        )}
+                        {member.year && (
+                          <span className="bg-green-100 text-green-800 px-2 py-1 rounded">
+                            Year {member.year}
+                          </span>
+                        )}
+                        {member.gender && (
+                          <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                            {member.gender}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -745,6 +1155,7 @@ function DepartmentDetailModal({ department, onEventClick, onClose }) {
             <DepartmentViewContent
               data={details.data}
               refreshTime={new Date()}
+              onEventClick={onEventClick}
             />
           )}
         </div>
@@ -996,16 +1407,19 @@ export default function AnalyticsPage() {
     const handleVolunteersExport = () => {
       if (!stats?.data?.central_volunteers) return;
       const dataToExport = stats.data.central_volunteers.map(vol => ({
-        'Volunteer Name': vol.name,
+        'Staff Name': vol.name,
         'Email': vol.personal_email,
         'Phone': vol.phone,
+        'Role': vol.role === 'dept_admin' ? 'Department Admin' : 
+               vol.department_name ? 'Department Volunteer' : 'Central Volunteer',
+        'Department': vol.department_name || 'Central',
         'Passes Assigned': vol.passes_assigned,
         'Revenue Collected': vol.total_collected,
       }));
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Central Volunteers");
-      XLSX.writeFile(workbook, `invente-central-volunteers-${new Date().toISOString().split("T")[0]}.xlsx`);
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Staff Revenue");
+      XLSX.writeFile(workbook, `invente-staff-revenue-${new Date().toISOString().split("T")[0]}.xlsx`);
     };
 
     // Export handler for hackathon teams with detailed member information
@@ -1120,6 +1534,12 @@ export default function AnalyticsPage() {
     const d = stats.data;
     return (
       <div className="p-6">
+        {selectedEvent && (
+          <EventDetailModal
+            event={selectedEvent}
+            onClose={() => setSelectedEvent(null)}
+          />
+        )}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">
             Event Analytics — {d.event?.name} (ID: {d.event?.external_id})
@@ -1212,7 +1632,17 @@ export default function AnalyticsPage() {
   if (stats.scope === "department") {
     return (
       <div className="p-6">
-        <DepartmentViewContent data={stats.data} refreshTime={refreshTime} />
+        {selectedEvent && (
+          <EventDetailModal
+            event={selectedEvent}
+            onClose={() => setSelectedEvent(null)}
+          />
+        )}
+        <DepartmentViewContent 
+          data={stats.data} 
+          refreshTime={refreshTime} 
+          onEventClick={(event) => setSelectedEvent(event)}
+        />
       </div>
     );
   }
@@ -1226,7 +1656,7 @@ export default function AnalyticsPage() {
     { id: "events", label: "Events", icon: "🎟️" },
     { id: "workshops", label: "Workshops", icon: "🔧" },
     { id: "hackathons", label: "Hackathons", icon: "💻" },
-    { id: "volunteers", label: "Volunteers", icon: "👥" },
+    { id: "volunteers", label: "Staff & Revenue", icon: "👥" },
   ];
 
   return (
@@ -1246,6 +1676,7 @@ export default function AnalyticsPage() {
       {selectedDepartment && (
         <DepartmentDetailModal
           department={selectedDepartment}
+          onEventClick={(event) => setSelectedEvent(event)}
           onClose={() => setSelectedDepartment(null)}
         />
       )}
@@ -1838,8 +2269,8 @@ export default function AnalyticsPage() {
           <div className="bg-white rounded-lg shadow-sm border">
           <div className="p-6 border-b flex justify-between items-center">
               <div>
-                <h3 className="text-lg font-semibold">Central Volunteer Performance</h3>
-                <div className="text-sm text-gray-600 mt-1">Activity and revenue collected by each central volunteer.</div>
+                <h3 className="text-lg font-semibold">Staff & Revenue Performance</h3>
+                <div className="text-sm text-gray-600 mt-1">Pass assignments and revenue collected by volunteers and department admins.</div>
               </div>
               <button
                 onClick={handleVolunteersExport}
@@ -1853,7 +2284,10 @@ export default function AnalyticsPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Volunteer Name
+                      Staff Member
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Role & Department
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Passes Assigned
@@ -1879,6 +2313,17 @@ export default function AnalyticsPage() {
                           <div className="text-sm text-gray-500">
                             {vol.personal_email} | {vol.phone || "No Phone"}
                           </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {vol.role === 'dept_admin' ? 'Department Admin' : 
+                             vol.department_name ? 'Department Volunteer' : 'Central Volunteer'}
+                          </div>
+                          {vol.department_name && (
+                            <div className="text-sm text-gray-500">
+                              {vol.department_name}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
                           {fmt(vol.passes_assigned)}

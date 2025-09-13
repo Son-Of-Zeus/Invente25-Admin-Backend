@@ -78,13 +78,6 @@ export default function TechRegistration() {
     setLoading(true);
     setError(null);
 
-    const isAnySlotFilled = formData.passes.some(pass => Object.keys(pass.slots).length > 0);
-    if (!isAnySlotFilled) {
-      setError('Please select at least one event in a pass.');
-      setLoading(false);
-      return;
-    }
-
     try {
       await authAxios.post('/tech-registration', formData);
 

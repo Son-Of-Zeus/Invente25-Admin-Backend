@@ -31,6 +31,7 @@ export default function TopBar() {
 
   // Define roles for clarity and to reduce repetition
   const registrationRoles = ["volunteer", "super_admin"];
+  const nonTechRegistrationRoles = ["volunteer", "super_admin", "dept_admin"];
   const attendanceRoles = ["event_admin", "super_admin"];
   const analyticsRoles = ["event_admin", "dept_admin", "super_admin"];
   const scanRoles = ["volunteer", "dept_admin", "event_admin", "super_admin"];
@@ -44,7 +45,7 @@ export default function TopBar() {
       <NavLink to="/analytics" requiredRoles={analyticsRoles} user={user}>Analytics</NavLink>
       <NavLink to="/tech-registration" requiredRoles={registrationRoles} user={user}>Tech Registration</NavLink>
       <NavLink to="/workshop-registration" requiredRoles={registrationRoles} user={user}>Workshop Registration</NavLink>
-      <NavLink to="/non-tech-registration" requiredRoles={registrationRoles} user={user}>Non-Tech Registration</NavLink>
+      <NavLink to="/non-tech-registration" requiredRoles={nonTechRegistrationRoles} user={user}>Non-Tech Registration</NavLink>
     </>
   );
 

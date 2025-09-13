@@ -105,7 +105,7 @@ export default function App() {
             <Route
               path="/non-tech-registration"
               element={
-                <RequireAuth roles={["volunteer", "super_admin"]}>
+                <RequireAuth roles={["volunteer", "super_admin", "dept_admin"]}>
                   <NonTechRegistrationPage />
                 </RequireAuth>
               }
