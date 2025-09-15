@@ -10,7 +10,7 @@ const router = express.Router();
 
 router.post('/', 
   authMiddleware, 
-  requireRole(['volunteer', 'super_admin']),
+  requireRole(['volunteer', 'super_admin', 'master_admin', 'workshop_admin']),
   async (req, res) => {
     const { emailID, name, phoneNumber, institution, paymentMethod, workshops } = req.body;
 
@@ -65,9 +65,9 @@ router.post('/',
       // Check department access permissions
       if (req.user.role === 'dept_admin' || (req.user.role === 'volunteer' && req.user.department_id)) {
         // Department-specific roles can only register for workshops from their department
-        // Since workshops are in WORKSHOP department, only central volunteers and super admins can register
+        // Since workshops are in WORKSHOP department, only central volunteers, super admins, master admins, and workshop admins can register
         await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Only central volunteers and super admins can register for workshops' });
+        return res.status(403).json({ error: 'Only central volunteers, super admins, master admins, and workshop admins can register for workshops' });
       }
 
       const paymentID = uuidv4();

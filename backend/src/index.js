@@ -8,6 +8,7 @@ const cron = require('node-cron');
 const { loginHandler, authMiddleware } = require('./auth');
 const otpRouter = require('./routes/otp');
 const { syncEvents } = require('./jobs/syncEvents');
+const MigrationRunner = require('../migrations/migrationRunner');
 
 // finally refactored the huge index.js into separate route files :)
 const scanRouter = require('./routes/scan');
@@ -60,20 +61,36 @@ app.use('/', receiptRouter); // receipt OCR endpoint (no auth)
 // Mount base router
 app.use('/organizers/api', baseRouter);
 
-app.listen(PORT, () => {
-  console.log(`Invente25 admin backend listening on ${PORT}`);
-  
-  // Set up events sync cron job
-  if (process.env.SYNC_EVENTS_ENABLED === 'true') {
-    // Run every 2 minutes by default (more reasonable for external API calls)
-    const cronSchedule = process.env.SYNC_EVENTS_CRON || '*/2 * * * *';
-    cron.schedule(cronSchedule, () => {
-      syncEvents().catch(err => console.error('Cron job error:', err));
-    });
-    console.log('Events sync cron job scheduled');
+// Initialize and start the server
+async function startServer() {
+  try {
+    // Run database migrations first
+    const migrationRunner = new MigrationRunner();
+    await migrationRunner.runMigrations();
     
-    // Run initial sync
-    syncEvents().catch(err => console.error('Initial sync error:', err));
+    app.listen(PORT, () => {
+      console.log(`Invente25 admin backend listening on ${PORT}`);
+      
+      // Set up events sync cron job
+      if (process.env.SYNC_EVENTS_ENABLED === 'true') {
+        // Run every 2 minutes by default (more reasonable for external API calls)
+        const cronSchedule = process.env.SYNC_EVENTS_CRON || '*/2 * * * *';
+        cron.schedule(cronSchedule, () => {
+          syncEvents().catch(err => console.error('Cron job error:', err));
+        });
+        console.log('Events sync cron job scheduled');
+        
+        // Run initial sync
+        syncEvents().catch(err => console.error('Initial sync error:', err));
+      }
+    });
+    
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
   }
-});
+}
+
+// Start the server
+startServer();
 

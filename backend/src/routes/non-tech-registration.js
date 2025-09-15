@@ -10,7 +10,7 @@ const router = express.Router();
 
 router.post('/', 
   authMiddleware, 
-  requireRole(['volunteer', 'super_admin']),
+  requireRole(['volunteer', 'super_admin', 'master_admin', 'dept_admin']),
   async (req, res) => {
     const { emailID, name, phoneNumber, institution, paymentMethod, events } = req.body;
 
@@ -51,9 +51,13 @@ router.post('/',
       // Check department access permissions
       if (req.user.role === 'dept_admin' || (req.user.role === 'volunteer' && req.user.department_id)) {
         // Department-specific roles can only register for events from their department
-        await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'You are not authorized to register for non-technical events' });
         const userDeptId = req.user.department_id;
+
+        if (!userDeptId) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: 'Department ID not found for user' });
+        }
+        
         const userDeptEvents = validEvents.rows.filter(event => event.department_id === userDeptId);
         
         if (userDeptEvents.length !== events.length) {

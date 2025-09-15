@@ -9,7 +9,7 @@ router.get('/scan/by-email/:email', authMiddleware, async (req, res) => {
   const { email } = req.params;
 
   try {
-    const isSuperOrCentral = req.user.role === 'super_admin' || (req.user.role === 'volunteer' && !req.user.department_id);
+    const isSuperOrCentral = req.user.role === 'super_admin' || req.user.role === 'master_admin' || (req.user.role === 'volunteer' && !req.user.department_id);
 
     // 1. Fetch all pass types associated with the email
     const passesPromise = db.query('SELECT * FROM passes WHERE user_email=$1', [email]);
@@ -142,7 +142,7 @@ router.get('/scan/:passId', authMiddleware, async (req, res) => {
       const slot = slotsRes.rows[0];
 
       // Check department access for non-super-admins and non-central-volunteers
-      if (req.user.role !== 'super_admin' && !(req.user.role === 'volunteer' && !req.user.department_id)) {
+      if (req.user.role !== 'super_admin' && req.user.role !== 'master_admin' && !(req.user.role === 'volunteer' && !req.user.department_id)) {
         if (slot.department_id !== req.user.department_id) {
           return res.status(403).json({ error: 'unauthorized to view this event' });
         }
@@ -216,7 +216,7 @@ router.post('/scan/:passId/assign', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'slot_no and event_id are required' });
   }
 
-  if (!['super_admin', 'dept_admin', 'volunteer', 'event_admin'].includes(req.user.role)) {
+  if (!['super_admin', 'master_admin', 'dept_admin', 'volunteer', 'event_admin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'unauthorized to assign events' });
   }
 
@@ -245,7 +245,7 @@ router.post('/scan/:passId/assign', authMiddleware, async (req, res) => {
       if (Number(req.user.event_id) !== Number(event_id)) {
         return res.status(403).json({ error: 'forbidden: can only assign their own event' });
       }
-    } else if (req.user.role !== 'super_admin' && !(req.user.role === 'volunteer' && !req.user.department_id)) {
+    } else if (req.user.role !== 'super_admin' && req.user.role !== 'master_admin' && !(req.user.role === 'volunteer' && !req.user.department_id)) {
       // For non-super-admins and non-central-volunteers, verify the event belongs to their department
       if (eventRes.rows[0].department_id !== req.user.department_id) {
         return res.status(403).json({ error: 'unauthorized to assign events from other departments' });
@@ -285,13 +285,13 @@ router.post('/scan/:passId/assign', authMiddleware, async (req, res) => {
 });
 
 // Mark attendance for a slot
-router.post('/scan/:passId/attend', authMiddleware, requireRole(['event_admin','super_admin']), async (req, res) => {
+router.post('/scan/:passId/attend', authMiddleware, requireRole(['event_admin','super_admin', 'master_admin']), async (req, res) => {
   const { passId } = req.params;
   const { slot_no } = req.body;
   const passType = detectPassType(passId);
 
   // Volunteers can view attendance data but cannot mark attendance
-  if (!(req.user.role === 'super_admin' ||req.user.role === 'event_admin')) {
+  if (!(req.user.role === 'super_admin' || req.user.role === 'master_admin' || req.user.role === 'event_admin')) {
     return res.status(403).json({ error: 'unauthorized to mark attendance' });
   }
 
@@ -424,7 +424,7 @@ router.delete('/scan/:passId/slot/:slotNo', authMiddleware, async (req, res) => 
     return res.status(400).json({ error: 'slot deletion only allowed for technical events' });
   }
 
-  if (!['super_admin', 'dept_admin', 'volunteer'].includes(req.user.role)) {
+  if (!['super_admin', 'master_admin', 'dept_admin', 'volunteer'].includes(req.user.role)) {
     return res.status(403).json({ error: 'unauthorized to delete slots' });
   }
 

@@ -26,7 +26,7 @@ const ALLOWED_TABLES = [
 const isTableAllowed = (tableName) => ALLOWED_TABLES.includes(tableName);
 
 
-// Superadmin-only: dump contents of key tables
+// Superadmin-only: dump contents of key tables (master_admin cannot access this)
 router.get('/dump', authMiddleware, requireRole(['super_admin']), async (req, res) => {
   try {
     const payload = {};
@@ -46,7 +46,7 @@ router.get('/dump', authMiddleware, requireRole(['super_admin']), async (req, re
 });
 
 
-// --- NEW: Generic record deletion route ---
+// --- NEW: Generic record deletion route (master_admin cannot access this) ---
 router.delete('/record', authMiddleware, requireRole(['super_admin']), async (req, res) => {
   const { tableName, primaryKey } = req.body;
 
@@ -118,7 +118,7 @@ router.post('/record', authMiddleware, requireRole(['super_admin']), async (req,
 
 
 // Volunteer summary with role-based scoping and optional CSV
-router.get('/volunteer-summary', authMiddleware, requireRole(['super_admin','dept_admin']), async (req, res) => {
+router.get('/volunteer-summary', authMiddleware, requireRole(['super_admin', 'master_admin', 'dept_admin']), async (req, res) => {
   try {
     const { format } = req.query; // 'csv' to download csv
 

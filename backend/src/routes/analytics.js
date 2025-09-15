@@ -12,7 +12,7 @@ const router = express.Router();
 router.get(
   "/event",
   authMiddleware,
-  requireRole(["event_admin", "super_admin", "dept_admin"]),
+  requireRole(["event_admin", "super_admin", "master_admin", "dept_admin", "workshop_admin"]),
   async (req, res) => {
     try {
       let eventId;
@@ -40,6 +40,15 @@ router.get(
           return res
             .status(403)
             .json({ error: "You are not authorized to view this event" });
+        }
+      }
+
+      // workshop_admin can only access workshop events
+      if (req.user.role === "workshop_admin") {
+        if (eventRow.event_type !== "workshop") {
+          return res
+            .status(403)
+            .json({ error: "Workshop admins can only view workshop events" });
         }
       }
 
@@ -104,7 +113,7 @@ router.get(
 router.get(
   "/department/:id",
   authMiddleware,
-  requireRole(["dept_admin", "super_admin"]),
+  requireRole(["dept_admin", "super_admin", "master_admin", "workshop_admin"]),
   async (req, res) => {
     const deptId = Number(req.params.id);
     if (Number.isNaN(deptId))
@@ -113,6 +122,14 @@ router.get(
     // if dept_admin, ensure they can only access their own department
     if (req.user.role === "dept_admin" && req.user.department_id !== deptId) {
       return res.status(403).json({ error: "forbidden" });
+    }
+
+    // workshop_admin can only access WORKSHOP department
+    if (req.user.role === "workshop_admin") {
+      const workshopDept = await db.query("SELECT id FROM departments WHERE name = 'WORKSHOP'");
+      if (workshopDept.rows.length === 0 || workshopDept.rows[0].id !== deptId) {
+        return res.status(403).json({ error: "Workshop admins can only view workshop department analytics" });
+      }
     }
 
     try {
@@ -269,7 +286,87 @@ router.get(
         )
       ).rows[0];
 
-      return res.json({
+      // Add hackathon data if this is ECE department (department_id = 4)
+      let hackathonData = null;
+      if (deptId === 4) {
+        const hackathonAnalytics = (
+          await db.query(`
+            SELECT
+              track,
+              COUNT(*)::int AS team_count,
+              COUNT(CASE WHEN attended THEN 1 END)::int AS attended_teams,
+              COUNT(DISTINCT leader_email)::int AS unique_leaders
+            FROM hack_passes
+            GROUP BY track
+            ORDER BY team_count DESC
+          `)
+        ).rows;
+
+        const hackathonDetails = (
+          await db.query(`
+            WITH team_members AS (
+              SELECT 
+                hd.team_id,
+                jsonb_agg(jsonb_build_object(
+                  'email', hd.email,
+                  'name', hd.full_name,
+                  'institution', hd.institution,
+                  'phone', hd.phone_number,
+                  'gender', hd.gender,
+                  'department', hd.department,
+                  'year', hd.year_of_study
+                )) AS members
+              FROM hack_reg_details hd
+              GROUP BY hd.team_id
+            ),
+            team_track_info AS (
+              SELECT
+                t.team_id,
+                t.domain_name,
+                t.problem_statement
+              FROM track t
+            ),
+            team_sizes AS (
+              SELECT 
+                team_id,
+                COUNT(email)::int as member_count
+              FROM hack_reg_details
+              GROUP BY team_id
+            )
+            SELECT
+              h.team_id,
+              h.team_name,
+              h.track,
+              h.attended,
+              h.created_at,
+              h.payment_id,
+              h.ticket_issued,
+              COALESCE(ts.member_count, 0) as team_size,
+              tti.domain_name,
+              tti.problem_statement,
+              tm.members
+            FROM hack_passes h
+            LEFT JOIN team_sizes ts ON h.team_id = ts.team_id
+            LEFT JOIN team_track_info tti ON h.team_id = tti.team_id
+            LEFT JOIN team_members tm ON h.team_id = tm.team_id
+            ORDER BY h.created_at DESC
+          `)
+        ).rows;
+
+        const totalHackathonTeams = (await db.query('SELECT COUNT(*)::int AS total_teams FROM hack_passes')).rows[0].total_teams;
+
+        hackathonData = {
+          track_breakdown: hackathonAnalytics,
+          recent_teams: hackathonDetails,
+          summary: {
+            total_teams: totalHackathonTeams,
+            total_attended: hackathonAnalytics.reduce((sum, h) => sum + h.attended_teams, 0),
+            total_participants: hackathonDetails.reduce((sum, h) => sum + h.team_size, 0),
+          },
+        };
+      }
+
+      const responseData = {
         department: deptRow,
         totals: {
           total_events,
@@ -294,7 +391,14 @@ router.get(
         top_event_by_attendance,
         registrations_over_time: timeRes,
         passes_by_payment: passesByPayment,
-      });
+      };
+
+      // Add hackathon data to response if ECE department
+      if (hackathonData) {
+        responseData.hackathons = hackathonData;
+      }
+
+      return res.json(responseData);
     } catch (err) {
       console.error("analytics/department error", err);
       return res.status(500).json({ error: "server error" });
@@ -302,11 +406,11 @@ router.get(
   }
 );
 
-// Enhanced College-level analytics: visible to super_admin only
+// College-level analytics: visible to super_admin, master_admin, and dept_admin
 router.get(
   "/college",
   authMiddleware,
-  requireRole(["super_admin", "dept_admin"]),
+  requireRole(["super_admin", "master_admin", "dept_admin"]),
   async (req, res) => {
     try {
       // Check if WORKSHOP department exists
@@ -537,13 +641,17 @@ router.get(
               ap.name,
               ap.personal_email,
               ap.phone,
+              a.role,
+              d.name as department_name,
               COUNT(p.pass_id)::int AS passes_assigned,
               COALESCE(SUM(r.amount), 0)::decimal AS total_collected
               FROM admin_profiles ap
+              LEFT JOIN admins a ON ap.admin_email = a.email
+              LEFT JOIN departments d ON a.department_id = d.id
               LEFT JOIN passes p ON ap.personal_email = p.assigned_by
               LEFT JOIN receipts r ON p.payment_id = r.payment_id
-              WHERE ap.admin_email = 'volunteer_central@invente.local'
-              GROUP BY ap.personal_email, ap.name, ap.phone
+              WHERE a.role IN ('volunteer', 'dept_admin')
+              GROUP BY ap.personal_email, ap.name, ap.phone, a.role, d.name
              ORDER BY total_collected DESC
            `)
       ).rows;
@@ -603,7 +711,7 @@ router.get(
 router.get(
   "/export/college",
   authMiddleware,
-  requireRole(["super_admin"]),
+  requireRole(["super_admin", "master_admin"]),
   async (req, res) => {
     try {
       // Get all the data for export by calling the same queries as college analytics
@@ -873,7 +981,7 @@ async function getCollegeAnalyticsDataForExport() {
 router.get(
   "/all-events",
   authMiddleware,
-  requireRole(['super_admin']),
+  requireRole(['super_admin', 'master_admin']),
   async (req, res) => {
     try {
       const allEvents = (await db.query(`
@@ -903,7 +1011,7 @@ router.get(
 router.get(
   "/workshops",
   authMiddleware,
-  requireRole(["super_admin"]),
+  requireRole(["super_admin", "master_admin", "workshop_admin"]),
   async (req, res) => {
     try {
       const workshopAnalytics = (
@@ -956,7 +1064,7 @@ router.get(
 router.get(
   "/hackathons",
   authMiddleware,
-  requireRole(["super_admin", "dept_admin"]),
+  requireRole(["super_admin", "master_admin", "dept_admin"]),
   async (req, res) => {
     try {
       const trackBreakdown = (
@@ -1027,7 +1135,7 @@ router.get(
 );
 
 // Get detailed pass registration data for a single volunteer
-router.get('/volunteer/:email', authMiddleware, requireRole(['super_admin']), async (req, res) => {
+router.get('/volunteer/:email', authMiddleware, requireRole(['super_admin', 'master_admin']), async (req, res) => {
   try {
     const volunteerEmail = req.params.email;
     if (!volunteerEmail) {

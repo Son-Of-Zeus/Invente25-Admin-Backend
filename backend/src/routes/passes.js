@@ -16,7 +16,7 @@ router.get('/:passId', authMiddleware, async (req, res) => {
 });
 
 // list all passes with their payment details
-router.get('/', authMiddleware, requireRole(['volunteer','dept_admin','super_admin']), async (req, res) => {
+router.get('/', authMiddleware, requireRole(['volunteer','dept_admin','super_admin', 'master_admin']), async (req, res) => {
   const rows = (await db.query(`
     SELECT p.*, r.method as payment_method 
     FROM passes p 
@@ -28,7 +28,7 @@ router.get('/', authMiddleware, requireRole(['volunteer','dept_admin','super_adm
 
 // Assign a slot to a pass (idempotent check for duplicate event on pass)
 // Roles allowed: volunteer, dept_admin, super_admin
-router.post('/:passId/slots', authMiddleware, requireRole(['volunteer','dept_admin','event_admin','super_admin']), async (req, res) => {
+router.post('/:passId/slots', authMiddleware, requireRole(['volunteer','dept_admin','event_admin','super_admin', 'master_admin']), async (req, res) => {
   const { passId } = req.params;
   const { slot_no, event_id } = req.body;
 
@@ -152,7 +152,7 @@ router.post('/:passId/slots', authMiddleware, requireRole(['volunteer','dept_adm
 });
 
 // mark attendance (event_admin, super_admin only)
-router.post('/:passId/attendance', authMiddleware, requireRole(['event_admin','super_admin']), async (req, res) => {
+router.post('/:passId/attendance', authMiddleware, requireRole(['event_admin','super_admin', 'master_admin']), async (req, res) => {
   const { passId } = req.params;
   const { event_id, attended } = req.body;
   if (!event_id) return res.status(400).json({ error: 'event_id required' });
@@ -183,7 +183,7 @@ router.post('/:passId/attendance', authMiddleware, requireRole(['event_admin','s
 });
 
 // delete a slot (only if not attended) — roles: volunteer, dept_admin, super_admin
-router.delete('/:passId/slots/:slot_no', authMiddleware, requireRole(['volunteer','dept_admin','super_admin']), async (req, res) => {
+router.delete('/:passId/slots/:slot_no', authMiddleware, requireRole(['volunteer','dept_admin','super_admin', 'master_admin']), async (req, res) => {
   const { passId, slot_no } = req.params;
   const slotNo = Number(slot_no);
   if (Number.isNaN(slotNo)) return res.status(400).json({ error: 'invalid slot_no' });
