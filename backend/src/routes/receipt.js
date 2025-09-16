@@ -20,8 +20,8 @@ const fileFields = upload.any();
 
 // Track limits
 const TRACK_LIMITS = {
-  Software: 30,
-  Hardware: 20
+  Software: 40,
+  Hardware: 22
 };
 
 // Pre-compiled regex for payment ID
@@ -184,23 +184,23 @@ router.post('/hackathon-receipt', fileFields, async (req, res) => {
     // This logic now correctly uses the parsed 'body' object
     if (body.paymentID && PAYMENT_ID_REGEX.test(body.paymentID)) {
       // Check track availability before forwarding to payment service
-      if (body.track) {
-        const track = body.track.split('$')[0].toLowerCase();
-        if (track === 'software' || track === 'hardware') {
-          const { rows } = await db.query(
-            'SELECT COUNT(*) as count FROM hack_passes WHERE track = $1',
-            [track]
-          );
-          const count = parseInt(rows[0].count, 10);
-          const max = TRACK_LIMITS[track];
+      // if (body.track) {
+      //   const track = body.track.split('$')[0].toLowerCase();
+      //   if (track === 'software' || track === 'hardware') {
+      //     const { rows } = await db.query(
+      //       'SELECT COUNT(*) as count FROM hack_passes WHERE track = $1',
+      //       [track]
+      //     );
+      //     const count = parseInt(rows[0].count, 10);
+      //     const max = TRACK_LIMITS[track];
           
-          if (count >= max) {
-            return res.status(400).json({ 
-              error: `${track.charAt(0).toUpperCase() + track.slice(1)} track is full` 
-            });
-          }
-        }
-      }
+      //     if (count >= max) {
+      //       return res.status(400).json({ 
+      //         error: `${track.charAt(0).toUpperCase() + track.slice(1)} track is full` 
+      //       });
+      //     }
+      //   }
+      // }
       if (file) {
         await handleReceiptUpload(body.paymentID, file)
       }
@@ -254,23 +254,23 @@ router.post('/hackathon-receipt', fileFields, async (req, res) => {
     await handleReceiptUpload(paymentID, file)
 
     // Check track availability before forwarding to payment service
-    if (payload.track) {
-      const track = payload.track.split('$')[0].toLowerCase();
-      if (track === 'software' || track === 'hardware') {
-        const { rows } = await db.query(
-          'SELECT COUNT(*) as count FROM hack_passes WHERE track = $1',
-          [track]
-        );
-        const count = parseInt(rows[0].count, 10);
-        const max = TRACK_LIMITS[track];
+    // if (payload.track) {
+    //   const track = payload.track.split('$')[0].toLowerCase();
+    //   if (track === 'software' || track === 'hardware') {
+    //     const { rows } = await db.query(
+    //       'SELECT COUNT(*) as count FROM hack_passes WHERE track = $1',
+    //       [track]
+    //     );
+    //     const count = parseInt(rows[0].count, 10);
+    //     const max = TRACK_LIMITS[track];
         
-        if (count >= max) {
-          return res.status(400).json({ 
-            error: `${track.charAt(0).toUpperCase() + track.slice(1)} track is full` 
-          });
-        }
-      }
-    }
+    //     if (count >= max) {
+    //       return res.status(400).json({ 
+    //         error: `${track.charAt(0).toUpperCase() + track.slice(1)} track is full` 
+    //       });
+    //     }
+    //   }
+    // }
 
     // The final 'payload' only contains JSON data and is forwarded correctly.
     await forwardToHackathonPaymentService(payload);
