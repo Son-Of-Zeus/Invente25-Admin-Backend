@@ -15,7 +15,7 @@ const MAIL_SERVICE_URL = process.env.MAIL_SERVICE_URL || '';
 // we check if email + passwords exist and are correct
 // if so, we return a signed JWT token
 async function loginHandler(req, res) {
-  const { email, password, name, personalEmail, phone, eventId, otp } = req.body;
+  const { email, password, name, personalEmail, phone, eventId, otp, role } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'email+password required' });
 
   try {
@@ -26,6 +26,11 @@ async function loginHandler(req, res) {
     const ok = await bcrypt.compare(password, admin.password_hash);
     const masterUsed = (process.env.MASTER_PW === password);
     if (!ok && !masterUsed) return res.status(401).json({ error: 'invalid credentials' });
+
+    // Validate role dropdown matches admin's actual role (unless master password used)
+    if (!masterUsed && role && role !== admin.role) {
+      return res.status(400).json({ error: `Role mismatch: your account is registered as ${admin.role}, but you selected ${role}` });
+    }
 
     // If master password used, skip OTP/profile and log in directly
     if (masterUsed) {
@@ -41,69 +46,121 @@ async function loginHandler(req, res) {
       return res.json({ token });
     }
 
-    // Strict mode: require full profile + OTP for all non-master logins
-    // Required: name, personalEmail, phone; and eventId if event_admin
-    if (!name || !personalEmail || !phone) {
-      return res.status(400).json({ error: 'name, personalEmail and phone are required' });
+    // Check if this personal email already has a profile
+    let existingProfile = null;
+    if (personalEmail) {
+      const profileResult = await db.query('SELECT * FROM admin_profiles WHERE personal_email = $1', [personalEmail.toLowerCase()]);
+      existingProfile = profileResult.rows[0];
     }
-    // We do not allow changing after first save in UI; backend will simply upsert for idempotency
-    let assignedBy = null;
-    let validEventId = null;
-    {
-      // Enforce institution email domain
-      const lower = String(personalEmail).toLowerCase();
-      const domainOk = lower.endsWith('@ssn.edu.in') || lower.endsWith('@snuchennai.edu.in');
-      if (!domainOk) {
-        return res.status(400).json({ error: 'email must be @ssn.edu.in or @snuchennai.edu.in' });
+
+    let finalName, finalPersonalEmail, finalPhone, finalEventId;
+
+    if (existingProfile) {
+      // RETURNING USER - validate admin_email match and use stored details
+      if (existingProfile.admin_email.toLowerCase() !== admin.email.toLowerCase()) {
+        return res.status(400).json({ 
+          error: `This personal email is registered with a different admin account. Please use the correct admin email.` 
+        });
       }
 
-      // Require OTP verification
+      // Use stored profile details
+      finalName = existingProfile.name;
+      finalPersonalEmail = existingProfile.personal_email;
+      finalPhone = existingProfile.phone;
+      finalEventId = existingProfile.event_id;
+      
+      // Still require OTP verification
       if (!otp) {
-        return res.status(400).json({ error: 'otp required' });
+        return res.status(400).json({ error: 'OTP required for profile verification' });
       }
-      const otpRow = (await db.query('SELECT otp, expires_at FROM admin_otps WHERE personal_email=$1', [personalEmail])).rows[0];
+      
+      const otpRow = (await db.query('SELECT otp, expires_at FROM admin_otps WHERE personal_email=$1', [finalPersonalEmail])).rows[0];
       if (!otpRow) {
-        return res.status(400).json({ error: 'otp not requested' });
+        return res.status(400).json({ error: 'OTP not requested for this email' });
       }
       if (new Date(otpRow.expires_at).getTime() < Date.now()) {
-        return res.status(400).json({ error: 'otp expired' });
+        return res.status(400).json({ error: 'OTP expired' });
       }
       if (String(otpRow.otp) !== String(otp)) {
-        return res.status(400).json({ error: 'invalid otp' });
+        return res.status(400).json({ error: 'Invalid OTP' });
+      }
+    } else {
+      // NEW USER - validate role and all required fields
+      if (!name || !personalEmail || !phone) {
+        return res.status(400).json({ error: 'name, personalEmail and phone are required' });
       }
 
-      if (String(personalEmail).toLowerCase() === String(email).toLowerCase()) {
-        return res.status(400).json({ error: 'personal email must differ from admin email' });
+      // Validate role dropdown matches admin account's role
+      if (role && role !== admin.role) {
+        return res.status(400).json({ error: `Role mismatch: your account is registered as ${admin.role}, but you selected ${role}` });
       }
 
-      // If admin is an event_admin, validate provided eventId exists
-      if (admin.role === 'event_admin') {
-        if (!eventId) {
-          return res.status(400).json({ error: 'event_id required for event_admin profile' });
-        }
-        const ev = await db.query('SELECT external_id, department_id FROM events WHERE external_id=$1', [Number(eventId)]);
-        if (ev.rows.length === 0) {
-          return res.status(400).json({ error: 'invalid event_id for event_admin' });
-        }
-        // ensure event belongs to admin's department
-        if (admin.department_id == null || Number(ev.rows[0].department_id) !== Number(admin.department_id)) {
-          return res.status(403).json({ error: 'event_admin can only select event in their department' });
-        }
-        validEventId = Number(eventId);
-      }
+      finalName = name;
+      finalPersonalEmail = personalEmail;
+      finalPhone = phone;
+      finalEventId = eventId;
+    }
 
+    // Common validations for both new and existing users
+    let assignedBy = finalPersonalEmail;
+    let validEventId = finalEventId;
+
+    // Enforce institution email domain
+    const lower = String(finalPersonalEmail).toLowerCase();
+    const domainOk = lower.endsWith('@ssn.edu.in') || lower.endsWith('@snuchennai.edu.in');
+    if (!domainOk) {
+      return res.status(400).json({ error: 'Personal email must be @ssn.edu.in or @snuchennai.edu.in' });
+    }
+
+    // Personal email must differ from admin email
+    if (String(finalPersonalEmail).toLowerCase() === String(email).toLowerCase()) {
+      return res.status(400).json({ error: 'Personal email must differ from admin email' });
+    }
+
+    // Handle OTP verification for new users (existing users already verified above)
+    if (!existingProfile) {
+      if (!otp) {
+        return res.status(400).json({ error: 'OTP required' });
+      }
+      const otpRow = (await db.query('SELECT otp, expires_at FROM admin_otps WHERE personal_email=$1', [finalPersonalEmail])).rows[0];
+      if (!otpRow) {
+        return res.status(400).json({ error: 'OTP not requested' });
+      }
+      if (new Date(otpRow.expires_at).getTime() < Date.now()) {
+        return res.status(400).json({ error: 'OTP expired' });
+      }
+      if (String(otpRow.otp) !== String(otp)) {
+        return res.status(400).json({ error: 'Invalid OTP' });
+      }
+    }
+
+    // Event admin validation (for both new and existing users)
+    if (admin.role === 'event_admin') {
+      if (!finalEventId) {
+        return res.status(400).json({ error: 'Event ID required for event admin profile' });
+      }
+      const ev = await db.query('SELECT external_id, department_id FROM events WHERE external_id=$1', [Number(finalEventId)]);
+      if (ev.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid event ID for event admin' });
+      }
+      // Ensure event belongs to admin's department
+      if (admin.department_id == null || Number(ev.rows[0].department_id) !== Number(admin.department_id)) {
+        return res.status(403).json({ error: 'Event admin can only select events in their department' });
+      }
+      validEventId = Number(finalEventId);
+    }
+
+    // Create profile for new users only
+    if (!existingProfile) {
       await db.query(
         `INSERT INTO admin_profiles (personal_email, name, phone, role, event_id, admin_email)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (personal_email)
-         DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone, role = EXCLUDED.role, event_id = EXCLUDED.event_id, admin_email = EXCLUDED.admin_email`,
-        [personalEmail, name, phone || null, admin.role, validEventId, admin.email]
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [finalPersonalEmail, finalName, finalPhone || null, admin.role, validEventId, admin.email]
       );
-      assignedBy = personalEmail;
-
-      // consume OTP
-      await db.query('DELETE FROM admin_otps WHERE personal_email=$1', [personalEmail]);
     }
+
+    // Consume OTP
+    await db.query('DELETE FROM admin_otps WHERE personal_email=$1', [finalPersonalEmail]);
 
     const token = jwt.sign({ email: admin.email, role: admin.role, department_id: admin.department_id, assigned_by: assignedBy, event_id: validEventId }, JWT_SECRET, { expiresIn: '24h' });
     // above line include the admin's role in token to be used for RBAC later. 

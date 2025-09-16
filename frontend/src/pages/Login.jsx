@@ -82,6 +82,10 @@ export default function LoginPage() {
         if (role) profile.role = role;
         if (role === 'event_admin') profile.eventId = eventId ? Number(eventId) : undefined;
       }
+      // Always include role for validation even if no profile data
+      if (role && !profile.role) {
+        profile.role = role;
+      }
       await login(email, password, profile);
       nav("/");
     } catch (err) {
@@ -150,8 +154,14 @@ export default function LoginPage() {
           )}
 
           <div className="flex items-center gap-2">
-            <button type="button" onClick={requestOtp} className="px-3 py-1 bg-gray-700 text-white rounded" disabled={sendingOtp}>
-              {otpSent ? 'Resend OTP' : 'Send OTP'}
+            <button type="button" onClick={requestOtp} className="px-3 py-1 bg-gray-700 text-white rounded flex items-center gap-2" disabled={sendingOtp}>
+              {sendingOtp && (
+                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              {sendingOtp ? 'Sending...' : (otpSent ? 'Resend OTP' : 'Send OTP')}
             </button>
             <input placeholder="Enter 5-digit OTP" value={otp} onChange={e => setOtp(e.target.value)} className="border p-2 rounded flex-1" />
           </div>

@@ -70,6 +70,64 @@ async function fetchWithRetry(url, retries = MAX_RETRIES) {
   }
 }
 
+async function syncWorkshops() {
+  console.log('🔄 Starting workshops sync...');
+  
+  try {
+    const workshopsUrl = 'https://ssnsnucinvente.com/api/workshops';
+    const response = await fetchWithRetry(workshopsUrl);
+
+    const responseText = await response.text();
+    
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Failed to parse workshops JSON response:', e);
+      return;
+    }
+
+    if (!responseData.data) {
+      console.error('Workshops response does not contain data array:', responseData);
+      return;
+    }
+
+    const { data: workshops } = responseData;
+    console.log(`Found ${workshops.length} workshops from API`);
+
+    // Process workshops
+    for (const workshop of workshops) {
+      if (!workshop || !workshop.attributes || !workshop.attributes.title) {
+        console.error('Malformed workshop object:', workshop);
+        continue;
+      }
+
+      try {
+        // Add 300 to workshop ID to avoid clashes with other events
+        const externalId = workshop.id + 300;
+        const cost = parseFloat(workshop.attributes.registrationFee) || 300;
+        
+        // Only insert if doesn't exist (no updates)
+        await db.query(`
+          INSERT INTO events (external_id, name, department_id, event_type, cost)
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (external_id) DO NOTHING
+          `,
+          [externalId, workshop.attributes.title, 11, 'workshop', cost]
+        );
+        
+        console.log(`Synced workshop: ${workshop.attributes.title} (ID: ${externalId})`);
+      } catch (error) {
+        console.error(`Error syncing workshop ${workshop.attributes.title}:`, error);
+      }
+    }
+
+    console.log('✅ Workshops sync completed successfully');
+  } catch (error) {
+    console.error('❌ Workshops sync failed:', error.message);
+  }
+}
+
 async function syncEvents() {
   // Check if sync is enabled and API URL is set
   console.log('SYNC_EVENTS_ENABLED value:', process.env.SYNC_EVENTS_ENABLED, 'type:', typeof process.env.SYNC_EVENTS_ENABLED);
@@ -257,6 +315,10 @@ async function syncEvents() {
     }
 
     console.log('✅ Events sync completed successfully');
+    
+    // Also sync workshops from dedicated API
+    await syncWorkshops();
+    
     consecutiveFailures = 0; // Reset failure counter on success
     lastSuccessfulSync = new Date();
   } catch (error) {
@@ -285,4 +347,4 @@ async function syncEvents() {
   }
 }
 
-module.exports = { syncEvents };
+module.exports = { syncEvents, syncWorkshops };
