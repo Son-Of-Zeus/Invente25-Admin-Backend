@@ -119,7 +119,8 @@ export default function LoginPage() {
               <option value="volunteer">Volunteer</option>
               <option value="dept_admin">Department Admin</option>
               <option value="event_admin">Event Admin</option>
-              <option value="super_admin">Super Admin</option>
+              <option value="master_admin">Master Admin</option>
+              <option value="workshop_admin">Workshop Admin</option>
             </select>
           </div>
 

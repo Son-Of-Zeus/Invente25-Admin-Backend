@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
+import inventeLogo from "../assets/invente.png";
 
 // A small helper component to avoid repeating the role check logic
 const NavLink = ({ to, requiredRoles, user, children, className = "" }) => {
@@ -30,11 +31,12 @@ export default function TopBar() {
   };
 
   // Define roles for clarity and to reduce repetition
-  const registrationRoles = ["volunteer", "super_admin"];
-  const nonTechRegistrationRoles = ["volunteer", "super_admin", "dept_admin"];
-  const attendanceRoles = ["event_admin", "super_admin"];
-  const analyticsRoles = ["event_admin", "dept_admin", "super_admin"];
-  const scanRoles = ["volunteer", "dept_admin", "event_admin", "super_admin"];
+  const registrationRoles = ["volunteer", "super_admin", "master_admin"];
+  const workshopRegistrationRoles = ["volunteer", "super_admin", "master_admin", "workshop_admin"];
+  const nonTechRegistrationRoles = ["volunteer", "super_admin", "master_admin", "dept_admin"];
+  const attendanceRoles = ["event_admin", "super_admin", "master_admin"];
+  const analyticsRoles = ["event_admin", "dept_admin", "super_admin", "master_admin", "workshop_admin"];
+  const scanRoles = ["volunteer", "dept_admin", "event_admin", "super_admin", "master_admin"];
 
   // The navigation links are defined once and reused for both desktop and mobile views
   const navLinks = (
@@ -44,7 +46,7 @@ export default function TopBar() {
       <NavLink to="/attendance" requiredRoles={attendanceRoles} user={user}>Attendance</NavLink>
       <NavLink to="/analytics" requiredRoles={analyticsRoles} user={user}>Analytics</NavLink>
       <NavLink to="/tech-registration" requiredRoles={registrationRoles} user={user}>Tech Registration</NavLink>
-      <NavLink to="/workshop-registration" requiredRoles={registrationRoles} user={user}>Workshop Registration</NavLink>
+      <NavLink to="/workshop-registration" requiredRoles={workshopRegistrationRoles} user={user}>Workshop Registration</NavLink>
       <NavLink to="/non-tech-registration" requiredRoles={nonTechRegistrationRoles} user={user}>Non-Tech Registration</NavLink>
     </>
   );
@@ -52,9 +54,13 @@ export default function TopBar() {
   return (
     <header className="bg-white shadow-md sticky top-0 z-50">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        {/* Left Side: Title */}
-        <Link to="/" className="text-xl font-bold text-gray-800">
-          Invente'25 Admin
+        {/* Left Side: Logo */}
+        <Link to="/" className="flex items-center">
+          <img 
+            src={inventeLogo} 
+            alt="Invente'25 Admin" 
+            className="h-8 w-auto"
+          />
         </Link>
 
         {/* Center: Desktop Navigation */}

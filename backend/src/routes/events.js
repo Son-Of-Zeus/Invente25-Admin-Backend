@@ -35,12 +35,21 @@ router.get('/', authMiddleware, async (req, res) => {
       LEFT JOIN departments d ON e.department_id = d.id
     `;
 
-    if (req.user.role === 'super_admin' || (req.user.role === 'volunteer' && !req.user.department_id)) {
-      // Super admin and central volunteer see all events
+    if (req.user.role === 'super_admin' || req.user.role === 'master_admin' || (req.user.role === 'volunteer' && !req.user.department_id)) {
+      // Super admin, master admin and central volunteer see all events
       if (deptId) {
         rows = (await db.query(queryBase + ' WHERE e.department_id = $1 ORDER BY e.name', [deptId])).rows;
       } else {
         rows = (await db.query(queryBase + ' ORDER BY e.name')).rows;
+      }
+    } else if (req.user.role === 'workshop_admin') {
+      // Workshop admin only sees workshop events
+      let workshopQuery = queryBase + " WHERE e.event_type = 'workshop'";
+      if (deptId) {
+        workshopQuery += ' AND e.department_id = $1';
+        rows = (await db.query(workshopQuery + ' ORDER BY e.name', [deptId])).rows;
+      } else {
+        rows = (await db.query(workshopQuery + ' ORDER BY e.name')).rows;
       }
     } else if (req.user.role === 'dept_admin' || (req.user.role === 'volunteer' && req.user.department_id) || req.user.role === 'event_admin') {
       // Department-specific roles only see their department's events
