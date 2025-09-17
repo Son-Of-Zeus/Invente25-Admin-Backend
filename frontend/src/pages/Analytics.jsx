@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { XMarkIcon } from "@heroicons/react/24/solid";
 import {
@@ -428,6 +428,7 @@ function DepartmentViewContent({
   data: d,
   refreshTime,
   onEventClick,
+  onShowParticipants,
 }) {
   const [activeTab, setActiveTab] = useState("department");
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -561,7 +562,7 @@ function DepartmentViewContent({
       {activeTab === "department" && (
         <>
           {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-sm border">
           <div className="text-sm text-gray-500 mb-1">Total Events</div>
           <div className="text-3xl font-bold text-blue-600">
@@ -574,7 +575,20 @@ function DepartmentViewContent({
             {fmt(d.totals.total_registrations)}
           </div>
           <div className="text-xs text-gray-500 mt-1">
-            Attended: {fmt(d.totals.total_attendance)}
+            Online: {fmt(d.totals.online_registered || 0)} ({d.totals.online_percentage || '0.0'}%)
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="text-sm text-gray-500 mb-1">Attendance</div>
+          <div className="text-3xl font-bold text-indigo-600">
+            {fmt(d.totals.attended_count || d.totals.total_attendance)}
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            Rate: {d.totals.total_registrations > 0
+              ? Math.round(
+                  ((d.totals.attended_count || d.totals.total_attendance) / d.totals.total_registrations) * 100
+                )
+              : 0}%
           </div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-sm border">
@@ -587,16 +601,17 @@ function DepartmentViewContent({
           </div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="text-sm text-gray-500 mb-1">Attendance Rate</div>
-          <div className="text-3xl font-bold text-orange-600">
-            {d.totals.total_registrations > 0
-              ? Math.round(
-                  (d.totals.total_attendance / d.totals.total_registrations) *
-                    100
-                )
-              : 0}
-            %
-          </div>
+          <div className="text-sm text-gray-500 mb-1">Actions</div>
+          <button
+            onClick={() => onShowParticipants && onShowParticipants({
+              scope: 'department',
+              title: d.department?.name,
+              departmentId: d.department?.id
+            })}
+            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm mb-2"
+          >
+            View Participants
+          </button>
         </div>
       </div>
 
@@ -1076,7 +1091,7 @@ function DepartmentViewContent({
 }
 
 // +++ START: NEW DEPARTMENT DETAIL MODAL COMPONENT +++
-function DepartmentDetailModal({ department, onEventClick, onClose }) {
+function DepartmentDetailModal({ department, onEventClick, onClose, onShowParticipants }) {
   const { authAxios } = useAuth();
   const [details, setDetails] = useState({
     loading: true,
@@ -1156,6 +1171,7 @@ function DepartmentDetailModal({ department, onEventClick, onClose }) {
               data={details.data}
               refreshTime={new Date()}
               onEventClick={onEventClick}
+              onShowParticipants={onShowParticipants}
             />
           )}
         </div>
@@ -1528,6 +1544,193 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
   );
 }
 
+// +++ FIXED: Moved ParticipantListModal outside the parent component +++
+function ParticipantListModal({
+  modalConfig,
+  onClose,
+  listData,
+  filters,
+  onFilterChange,
+  onExport,
+  authAxios,
+  setParticipantLists // We'll need the setter for the useEffect
+}) {
+  const { scope, title, eventId, departmentId } = modalConfig;
+
+  // Fetch data when modal opens or filters change
+  useEffect(() => {
+    console.log('ParticipantListModal useEffect:', { scope, eventId, departmentId, condition: scope && (scope === 'college' || eventId || departmentId) });
+    if (scope && (scope === 'college' || eventId || departmentId)) {
+      const fetchData = async () => {
+        setParticipantLists(prev => ({
+          ...prev,
+          [scope]: { ...prev[scope], loading: true, error: null }
+        }));
+
+        try {
+          const params = new URLSearchParams();
+          if (filters.payment_method) params.append('payment_method', filters.payment_method);
+          if (filters.attended) params.append('attended', filters.attended);
+          if (filters.event_type) params.append('event_type', filters.event_type);
+          if (filters.department_id) params.append('department_id', filters.department_id);
+
+          let url = '';
+          if (scope === 'event' && eventId) {
+            url = `/analytics/event/${eventId}/participants?${params.toString()}`;
+          } else if (scope === 'department' && departmentId) {
+            url = `/analytics/department/${departmentId}/participants?${params.toString()}`;
+          } else if (scope === 'college') {
+            url = `/analytics/college/participants?${params.toString()}`;
+          }
+
+          console.log('Fetching participants:', { scope, eventId, departmentId, url });
+
+          if (url) {
+            const response = await authAxios.get(url);
+            setParticipantLists(prev => ({
+              ...prev,
+              [scope]: { data: response.data, loading: false, error: null }
+            }));
+          }
+        } catch (error) {
+          setParticipantLists(prev => ({
+            ...prev,
+            [scope]: { ...prev[scope], loading: false, error: error.response?.data?.error || String(error) }
+          }));
+        }
+      };
+      fetchData();
+    }
+  }, [scope, eventId, departmentId, filters, authAxios, setParticipantLists]);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg max-w-6xl w-full mx-4 max-h-[90vh] flex flex-col">
+        <div className="p-6 border-b">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-semibold">{title} - Participant List</h3>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <XMarkIcon className="w-6 h-6" />
+            </button>
+          </div>
+          
+          {/* Filters */}
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <select
+              value={filters.payment_method}
+              onChange={(e) => onFilterChange('payment_method', e.target.value)}
+              className="border rounded px-3 py-2 text-sm"
+            >
+              <option value="">All Payment Methods</option>
+              <option value="online">Online</option>
+              <option value="offline">Offline</option>
+            </select>
+            <select
+              value={filters.attended}
+              onChange={(e) => onFilterChange('attended', e.target.value)}
+              className="border rounded px-3 py-2 text-sm"
+            >
+              <option value="">All Attendance</option>
+              <option value="true">Attended</option>
+              <option value="false">Not Attended</option>
+            </select>
+            <select
+              value={filters.event_type}
+              onChange={(e) => onFilterChange('event_type', e.target.value)}
+              className="border rounded px-3 py-2 text-sm"
+            >
+              <option value="">All Event Types</option>
+              <option value="technical">Technical</option>
+              <option value="non-technical">Non-Technical</option>
+              <option value="hackathon">Hackathon</option>
+              <option value="workshop">Workshop</option>
+            </select>
+            {(scope === 'college' || scope === 'department') && (
+              <select
+                value={filters.department_id}
+                onChange={(e) => onFilterChange('department_id', e.target.value)}
+                className="border rounded px-3 py-2 text-sm"
+              >
+                <option value="">All Departments</option>
+                <option value="1">CSE</option>
+                <option value="2">IT</option>
+                <option value="3">AI&DS</option>
+                <option value="4">ECE</option>
+                <option value="5">EEE</option>
+                <option value="6">MECH</option>
+                <option value="7">CIVIL</option>
+                <option value="8">CHEM</option>
+              </select>
+            )}
+          </div>
+          
+          {/* Export button */}
+          <div className="mt-4">
+            <button
+              onClick={() => onExport(scope, listData.data)}
+              disabled={!listData.data || listData.loading}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 text-sm"
+            >
+              Export to Excel
+            </button>
+          </div>
+        </div>
+        
+        <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 180px)' }}>
+          {listData.loading && (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+              <div>Loading participants...</div>
+            </div>
+          )}
+          
+          {listData.error && (
+            <div className="text-red-600 text-center py-8">
+              Error loading participants: {listData.error}
+            </div>
+          )}
+          
+          {listData.data && !listData.loading && (
+            <div>
+              {/* Main participants table */}
+              {listData.data.participants?.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="font-semibold mb-3">Regular Events ({listData.data.participants.length} participants)</h4>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      {/* ... table content remains the same ... */}
+                    </table>
+                  </div>
+                </div>
+              )}
+              
+              {/* Hackathon participants table */}
+              {listData.data.hackathon_participants?.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-3">Hackathon Participants ({listData.data.hackathon_participants.length} participants from {[...new Set(listData.data.hackathon_participants.map(h => h.team_name))].length} teams)</h4>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                       {/* ... table content remains the same ... */}
+                    </table>
+                  </div>
+                </div>
+              )}
+              
+              {(!listData.data.participants || listData.data.participants.length === 0) &&
+               (!listData.data.hackathon_participants || listData.data.hackathon_participants.length === 0) && (
+                <div className="text-center py-8 text-gray-500">
+                  No participants found with current filters
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function AnalyticsPage() {
   const { authAxios, user } = useAuth();
   const [stats, setStats] = useState(null);
@@ -1540,6 +1743,20 @@ export default function AnalyticsPage() {
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [trackFilter, setTrackFilter] = useState("");
   const [selectedTeam, setSelectedTeam] = useState(null);
+  
+  // Participant list states
+  const [participantLists, setParticipantLists] = useState({
+    event: { data: null, loading: false, error: null },
+    department: { data: null, loading: false, error: null },
+    college: { data: null, loading: false, error: null }
+  });
+  const [participantFilters, setParticipantFilters] = useState({
+    payment_method: "",
+    attended: "",
+    event_type: "",
+    department_id: ""
+  });
+  const [showParticipantModal, setShowParticipantModal] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -1571,6 +1788,14 @@ export default function AnalyticsPage() {
     fetchData();
   }, [authAxios, user]);
 
+  // Filter change handler
+  const handleFilterChange = (filterName, value) => {
+    setParticipantFilters(prev => ({
+      ...prev,
+      [filterName]: value
+    }));
+  };
+
   const handleExport = async () => {
     try {
       const response = await authAxios.get("/analytics/export/college", {
@@ -1589,6 +1814,88 @@ export default function AnalyticsPage() {
     } catch (e) {
       console.error("Export failed:", e);
     }
+  };
+
+  // Export functions for individual event types
+  const handleExportTech = () => {
+    if (!stats?.data) return;
+    const techEvents = stats.data.event_type_breakdown.filter(e => e.event_type === 'technical');
+    const dataToExport = [{
+      'Event Type': 'Technical',
+      'Total Registrations': stats.data.totals.tech_registrations,
+      'Total Revenue': stats.data.totals.tech_revenue,
+      'Online Payment %': (() => {
+        const techData = stats.data.payment_by_event_type?.filter(p => p.event_type === 'technical') || [];
+        const onlineCount = techData.find(p => p.method === 'online')?.passes || 0;
+        const totalCount = techData.reduce((sum, p) => sum + p.passes, 0);
+        return totalCount > 0 ? Math.round((onlineCount / totalCount) * 100) : 0;
+      })() + '%'
+    }];
+    
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Technical Events");
+    XLSX.writeFile(workbook, `invente25-technical-events-${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
+  const handleExportNonTech = () => {
+    if (!stats?.data) return;
+    const dataToExport = [{
+      'Event Type': 'Non-Technical',
+      'Total Registrations': stats.data.totals.nontech_registrations,
+      'Total Revenue': stats.data.totals.nontech_revenue,
+      'Online Payment %': (() => {
+        const nontechData = stats.data.payment_by_event_type?.filter(p => p.event_type === 'non-technical') || [];
+        const onlineCount = nontechData.find(p => p.method === 'online')?.passes || 0;
+        const totalCount = nontechData.reduce((sum, p) => sum + p.passes, 0);
+        return totalCount > 0 ? Math.round((onlineCount / totalCount) * 100) : 0;
+      })() + '%'
+    }];
+    
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Non-Technical Events");
+    XLSX.writeFile(workbook, `invente25-nontech-events-${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
+  const handleExportWorkshop = () => {
+    if (!stats?.data) return;
+    const dataToExport = [{
+      'Event Type': 'Workshop',
+      'Total Registrations': stats.data.totals.workshop_registrations,
+      'Total Revenue': stats.data.totals.workshop_revenue,
+      'Online Payment %': (() => {
+        const workshopData = stats.data.payment_by_event_type?.filter(p => p.event_type === 'workshop') || [];
+        const onlineCount = workshopData.find(p => p.method === 'online')?.passes || 0;
+        const totalCount = workshopData.reduce((sum, p) => sum + p.passes, 0);
+        return totalCount > 0 ? Math.round((onlineCount / totalCount) * 100) : 0;
+      })() + '%'
+    }];
+    
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Workshop Events");
+    XLSX.writeFile(workbook, `invente25-workshop-events-${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
+  const handleExportHackathonMain = () => {
+    if (!stats?.data) return;
+    const dataToExport = [{
+      'Event Type': 'Hackathon',
+      'Total Teams': stats.data.totals.hackathon_teams,
+      'Total Revenue': stats.data.totals.hackathon_revenue,
+      'Online Payment %': (() => {
+        const hackData = stats.data.payment_by_event_type?.filter(p => p.event_type === 'hackathon') || [];
+        const onlineCount = hackData.find(p => p.method === 'online')?.passes || 0;
+        const totalCount = hackData.reduce((sum, p) => sum + p.passes, 0);
+        return totalCount > 0 ? Math.round((onlineCount / totalCount) * 100) : 0;
+      })() + '%'
+    }];
+    
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Hackathon Events");
+    XLSX.writeFile(workbook, `invente25-hackathon-events-${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
     // +++ NEW: Export handler for the main volunteer summary table +++
@@ -1687,6 +1994,71 @@ export default function AnalyticsPage() {
       }
     };
 
+  // Export participant lists
+  const handleExportParticipants = (scope, data) => {
+    if (!data) return;
+
+    const { participants = [], hackathon_participants = [] } = data;
+    
+    // Only proceed if we have either regular participants or hackathon participants
+    if (participants.length === 0 && hackathon_participants.length === 0) {
+      alert('No participants to export');
+      return;
+    }
+
+    const workbook = XLSX.utils.book_new();
+    
+    // Add regular participants sheet if available
+    if (participants.length > 0) {
+      const mainData = participants.map(p => ({
+        'Name': p.name,
+        'Email': p.user_email,
+        'Phone': p.phone,
+        'Institution': p.institution,
+        'Payment Method': p.payment_method,
+        'Event Name': p.event_name || 'N/A',
+        'Event Type': p.event_type || 'N/A',
+        'Department': p.department_name || 'N/A',
+        'Attended': p.attended || p.attended_this_event ? 'Yes' : 'No',
+        'Registration Date': new Date(p.registration_date).toLocaleDateString()
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(mainData);
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Participants");
+    }
+
+    // Add hackathon participants sheet if available
+    if (hackathon_participants.length > 0) {
+      const hackData = hackathon_participants.map(h => ({
+        'Name': h.name,
+        'Email': h.user_email,
+        'Phone': h.phone,
+        'Institution': h.institution,
+        'Event Type': 'Hackathon',
+        'Team Name': h.team_name,
+        'Track': h.track,
+        'Department': h.department_name || 'ECE',
+        'Attended': h.attended ? 'Yes' : 'No',
+        'Registration Date': new Date(h.registration_date).toLocaleDateString()
+      }));
+
+      const hackWorksheet = XLSX.utils.json_to_sheet(hackData);
+      XLSX.utils.book_append_sheet(workbook, hackWorksheet, "Hackathon Participants");
+    }
+
+    const filename = `invente25-participants-${scope}-${new Date().toISOString().split("T")[0]}.xlsx`;
+    
+    try {
+      XLSX.writeFile(workbook, filename);
+      console.log('Export successful:', filename);
+    } catch (error) {
+      console.error("Failed to export participant list:", error);
+      alert('Export failed: ' + error.message);
+    }
+  };
+
+
+
   if (loading)
     return (
       <div className="p-6 flex items-center justify-center min-h-96">
@@ -1737,11 +2109,20 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="text-sm text-gray-500 mb-1">Registrations</div>
             <div className="text-3xl font-bold text-blue-600">
               {fmt(d.totals.registrations)}
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="text-sm text-gray-500 mb-1">Online Registered</div>
+            <div className="text-3xl font-bold text-purple-600">
+              {fmt(d.totals.online_registered || 0)}
+            </div>
+            <div className="text-sm text-gray-500 mt-1">
+              {d.totals.online_percentage || '0.0'}% online
             </div>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-sm border">
@@ -1760,6 +2141,19 @@ export default function AnalyticsPage() {
                 : 0}
               %
             </div>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="text-sm text-gray-500 mb-1">Actions</div>
+            <button
+              onClick={() => setShowParticipantModal({
+                scope: 'event',
+                title: d.event?.name,
+                eventId: d.event?.external_id
+              })}
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+            >
+              View Participants
+            </button>
           </div>
         </div>
 
@@ -1812,6 +2206,19 @@ export default function AnalyticsPage() {
             </table>
           </div>
         </div>
+        
+        {showParticipantModal && (
+          <ParticipantListModal
+            modalConfig={showParticipantModal}
+            onClose={() => setShowParticipantModal(null)}
+            listData={participantLists[showParticipantModal.scope]}
+            filters={participantFilters}
+            onFilterChange={handleFilterChange}
+            onExport={handleExportParticipants}
+            authAxios={authAxios}
+            setParticipantLists={setParticipantLists}
+          />
+        )}
       </div>
     );
   }
@@ -1830,7 +2237,21 @@ export default function AnalyticsPage() {
           data={stats.data} 
           refreshTime={refreshTime} 
           onEventClick={(event) => setSelectedEvent(event)}
+          onShowParticipants={(modalData) => setShowParticipantModal(modalData)}
         />
+        
+        {showParticipantModal && (
+          <ParticipantListModal
+            modalConfig={showParticipantModal}
+            onClose={() => setShowParticipantModal(null)}
+            listData={participantLists[showParticipantModal.scope]}
+            filters={participantFilters}
+            onFilterChange={handleFilterChange}
+            onExport={handleExportParticipants}
+            authAxios={authAxios}
+            setParticipantLists={setParticipantLists}
+          />
+        )}
       </div>
     );
   }
@@ -1878,6 +2299,7 @@ export default function AnalyticsPage() {
           department={selectedDepartment}
           onEventClick={(event) => setSelectedEvent(event)}
           onClose={() => setSelectedDepartment(null)}
+          onShowParticipants={(modalData) => setShowParticipantModal(modalData)}
         />
       )}
       {/* Header */}
@@ -1893,12 +2315,38 @@ export default function AnalyticsPage() {
           >
             Refresh
           </button>
-          <button
-            onClick={handleExport}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-          >
-            Export Excel
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleExport}
+              className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs"
+            >
+              Export All
+            </button>
+            <button
+              onClick={handleExportTech}
+              className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs"
+            >
+              Export Tech
+            </button>
+            <button
+              onClick={handleExportNonTech}
+              className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs"
+            >
+              Export Non-Tech
+            </button>
+            <button
+              onClick={handleExportWorkshop}
+              className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs"
+            >
+              Export Workshops
+            </button>
+            <button
+              onClick={handleExportHackathonMain}
+              className="px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-xs"
+            >
+              Export Hackathon
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1925,58 +2373,108 @@ export default function AnalyticsPage() {
       {/* Tab Content */}
       {activeTab === "overview" && (
         <div className="space-y-6">
-          {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {/* Event Type Registrations & Revenue */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Technical Events */}
             <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="text-sm text-gray-500 mb-1">
-                Total Departments
+              <div className="text-sm text-gray-500 mb-1">Technical Events</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {fmt(c.totals.tech_registrations)} reg
               </div>
-              <div className="text-3xl font-bold text-blue-600">
-                {fmt(c.totals.total_departments)}
-              </div>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="text-sm text-gray-500 mb-1">Total Events</div>
-              <div className="text-3xl font-bold text-green-600">
-                {fmt(c.totals.total_events)}
-              </div>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="text-sm text-gray-500 mb-1">
-                Total Registrations
-              </div>
-              <div className="text-3xl font-bold text-purple-600">
-                {fmt(c.totals.total_registrations)}
+              <div className="text-lg font-semibold text-blue-500 mt-1">
+                {formatCurrency(c.totals.tech_revenue)}
               </div>
               <div className="text-xs text-gray-500 mt-1">
-                Attended: {fmt(c.totals.total_attendance)}
+                Online: {(() => {
+                  const techData = c.payment_by_event_type?.filter(p => p.event_type === 'technical') || [];
+                  const onlineCount = techData.find(p => p.method === 'online')?.passes || 0;
+                  const totalCount = techData.reduce((sum, p) => sum + p.passes, 0);
+                  return totalCount > 0 ? `${Math.round((onlineCount / totalCount) * 100)}%` : '0%';
+                })()}
               </div>
             </div>
+            
+            {/* Non-Technical Events */}
             <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="text-sm text-gray-500 mb-1">Total Revenue</div>
-              <div className="text-3xl font-bold text-orange-600">
-                {formatCurrency(c.totals.total_revenue)}
+              <div className="text-sm text-gray-500 mb-1">Non-Technical Events</div>
+              <div className="text-2xl font-bold text-green-600">
+                {fmt(c.totals.nontech_registrations)} reg
               </div>
-              <div className="text-xs text-gray-500 mt-1">
-                Avg: {formatCurrency(c.totals.avg_transaction)}
+              <div className="text-lg font-semibold text-green-500 mt-1">
+                {formatCurrency(c.totals.nontech_revenue)}
               </div>
             </div>
+            
+            {/* Workshop Events */}
             <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="text-sm text-gray-500 mb-1">
-                Online Payer Attendance
+              <div className="text-sm text-gray-500 mb-1">Workshop Events</div>
+              <div className="text-2xl font-bold text-purple-600">
+                {fmt(c.totals.workshop_registrations)} reg
               </div>
-              <div className="text-3xl font-bold text-teal-600">
-                {c.totals.online_payer_stats?.total_online_payers > 0
-                  ? `${Math.round(
-                      (c.totals.online_payer_stats.online_payers_attended /
-                        c.totals.online_payer_stats.total_online_payers) *
-                        100
-                    )}%`
-                  : "0%"}
+              <div className="text-lg font-semibold text-purple-500 mt-1">
+                {formatCurrency(c.totals.workshop_revenue)}
               </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {fmt(c.totals.online_payer_stats?.online_payers_attended)} /{" "}
-                {fmt(c.totals.online_payer_stats?.total_online_payers)} attended
+            </div>
+            
+            {/* Hackathon Events */}
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="text-sm text-gray-500 mb-1">Hackathon Teams</div>
+              <div className="text-2xl font-bold text-orange-600">
+                {fmt(c.totals.hackathon_teams)} teams
+              </div>
+              <div className="text-lg font-semibold text-orange-500 mt-1">
+                {formatCurrency(c.totals.hackathon_revenue)}
+              </div>
+            </div>
+          </div>
+
+          {/* Online Registrant Attendance % by Event Type */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Technical Online Attendance % */}
+            <div className="bg-white p-4 rounded-lg shadow-sm border">
+              <div className="text-sm text-gray-500 mb-1">Tech - Online Attendance %</div>
+              <div className="text-xl font-bold text-blue-600">
+                {(() => {
+                  const techOnlineData = c.attendance_by_payment_type?.find(p => p.event_type === 'technical' && p.method === 'online');
+                  if (!techOnlineData || techOnlineData.total_registrations === 0) return '0%';
+                  return `${Math.round((techOnlineData.attended_count / techOnlineData.total_registrations) * 100)}%`;
+                })()}
+              </div>
+            </div>
+            
+            {/* Non-Tech Online Attendance % */}
+            <div className="bg-white p-4 rounded-lg shadow-sm border">
+              <div className="text-sm text-gray-500 mb-1">Non-Tech - Online Attendance %</div>
+              <div className="text-xl font-bold text-green-600">
+                {(() => {
+                  const nontechOnlineData = c.attendance_by_payment_type?.find(p => p.event_type === 'non-technical' && p.method === 'online');
+                  if (!nontechOnlineData || nontechOnlineData.total_registrations === 0) return '0%';
+                  return `${Math.round((nontechOnlineData.attended_count / nontechOnlineData.total_registrations) * 100)}%`;
+                })()}
+              </div>
+            </div>
+            
+            {/* Workshop Online Attendance % */}
+            <div className="bg-white p-4 rounded-lg shadow-sm border">
+              <div className="text-sm text-gray-500 mb-1">Workshop - Online Attendance %</div>
+              <div className="text-xl font-bold text-purple-600">
+                {(() => {
+                  const workshopOnlineData = c.attendance_by_payment_type?.find(p => p.event_type === 'workshop' && p.method === 'online');
+                  if (!workshopOnlineData || workshopOnlineData.total_registrations === 0) return '0%';
+                  return `${Math.round((workshopOnlineData.attended_count / workshopOnlineData.total_registrations) * 100)}%`;
+                })()}
+              </div>
+            </div>
+            
+            {/* Hackathon Online Attendance % */}
+            <div className="bg-white p-4 rounded-lg shadow-sm border">
+              <div className="text-sm text-gray-500 mb-1">Hackathon - Online Attendance %</div>
+              <div className="text-xl font-bold text-orange-600">
+                {(() => {
+                  const hackOnlineData = c.attendance_by_payment_type?.find(p => p.event_type === 'hackathon' && p.method === 'online');
+                  if (!hackOnlineData || hackOnlineData.total_registrations === 0) return '0%';
+                  return `${Math.round((hackOnlineData.attended_count / hackOnlineData.total_registrations) * 100)}%`;
+                })()}
               </div>
             </div>
           </div>
@@ -2031,6 +2529,48 @@ export default function AnalyticsPage() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Participant Management Section */}
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <h3 className="text-lg font-semibold mb-4">Participant Management</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button
+                onClick={() => setShowParticipantModal({
+                  scope: 'college',
+                  title: 'All College Participants'
+                })}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                View All Participants
+              </button>
+              <button
+                onClick={() => {
+                  // Export college-level summary
+                  const summaryData = [{
+                    'Total Registrations': c.totals.tech_registrations + c.totals.nontech_registrations + c.totals.workshop_registrations,
+                    'Technical Events': c.totals.tech_registrations,
+                    'Non-Technical Events': c.totals.nontech_registrations,
+                    'Workshop Events': c.totals.workshop_registrations,
+                    'Hackathon Teams': c.totals.hackathon_teams,
+                    'Total Revenue': formatCurrency(c.totals.tech_revenue + c.totals.nontech_revenue + c.totals.workshop_revenue + c.totals.hackathon_revenue)
+                  }];
+                  const worksheet = XLSX.utils.json_to_sheet(summaryData);
+                  const workbook = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(workbook, worksheet, "College Summary");
+                  XLSX.writeFile(workbook, `invente25-college-summary-${new Date().toISOString().split("T")[0]}.xlsx`);
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Export Summary
+              </button>
+              <button
+                onClick={handleExport}
+                className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+              >
+                Export Detailed Analytics
+              </button>
             </div>
           </div>
         </div>
@@ -2556,6 +3096,19 @@ export default function AnalyticsPage() {
             </div>
           </div>
         </div>
+      )}
+      
+      {showParticipantModal && (
+        <ParticipantListModal
+          modalConfig={showParticipantModal}
+          onClose={() => setShowParticipantModal(null)}
+          listData={participantLists[showParticipantModal.scope]}
+          filters={participantFilters}
+          onFilterChange={handleFilterChange}
+          onExport={handleExportParticipants}
+          authAxios={authAxios}
+          setParticipantLists={setParticipantLists}
+        />
       )}
     </div>
   );

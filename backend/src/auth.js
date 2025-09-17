@@ -10,6 +10,70 @@ require('dotenv').config();
 const JWT_SECRET = process.env.JWT_SECRET || 'plisreplaceinprod';
 const MAIL_SERVICE_URL = process.env.MAIL_SERVICE_URL || '';
 
+// Department admin email restrictions
+const DEPT_ADMIN_ALLOWED_EMAILS = {
+  'CSE_SSN': [
+    'srihari2210434@ssn.edu.in',
+    'prathiyangira2210597@ssn.edu.in',
+    'kowshika2210370@ssn.edu.in'
+  ],
+  'CSE_SNU': [
+    'meenakshi23110250@snuchennai.edu.in'
+  ],
+  'IT': [
+    'singaram2210488@ssn.edu.in',
+    'srinivas2210575@ssn.edu.in'
+  ],
+  'ECE': [
+    'mukkesh2310746@ssn.edu.in'
+  ],
+  'EEE': [
+    'varsha2310260@ssn.edu.in'
+  ],
+  'CHEM': [
+    'nakulasri2210859@ssn.edu.in'
+  ],
+  'MECH': [
+    'sitaraman2210435@ssn.edu.in'
+  ],
+  'CIVIL': [
+    'deepak2210926@ssn.edu.in',
+    'sindhuja2210865@ssn.edu.in',
+    'ehalwaarkuzhali2210938@ssn.edu.in'
+  ],
+  'BME': [
+    'vidya2210165@ssn.edu.in'
+  ],
+  'COM': [
+    'oveya24310082@snuchennai.edu.in'
+  ]
+  // WORKSHOP has no restrictions as per requirement
+};
+
+// Function to validate department admin email restrictions
+function isEmailAllowedForDepartment(email, department, role) {
+  // No restrictions for workshop admins
+  if (role === 'workshop') {
+    return true;
+  }
+  
+  // No restrictions for super_admin
+  if (role === 'super_admin') {
+    return true;
+  }
+  
+  // For department admins, check if email is in allowed list
+  if (role === 'dept_admin') {
+    const allowedEmails = DEPT_ADMIN_ALLOWED_EMAILS[department];
+    if (!allowedEmails) {
+      return false; // Department not found in restrictions
+    }
+    return allowedEmails.includes(email);
+  }
+  
+  return true; // Default allow for other roles
+}
+
 // POST /auth/login -> 
 // req body will have email, password. so 
 // we check if email + passwords exist and are correct
@@ -148,6 +212,23 @@ async function loginHandler(req, res) {
         return res.status(403).json({ error: 'Event admin can only select events in their department' });
       }
       validEventId = Number(finalEventId);
+    }
+
+    // Validate email restrictions for department admins (new users only)
+    if (!existingProfile && admin.role === 'dept_admin') {
+      // Get department name from department_id
+      const deptResult = await db.query('SELECT name FROM departments WHERE id = $1', [admin.department_id]);
+      if (deptResult.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid department' });
+      }
+      const departmentName = deptResult.rows[0].name;
+      
+      // Check if email is allowed for this department
+      if (!isEmailAllowedForDepartment(finalPersonalEmail, departmentName, admin.role)) {
+        return res.status(403).json({ 
+          error: `Email ${finalPersonalEmail} is not authorized for ${departmentName} department admin access. Please contact the system administrator.` 
+        });
+      }
     }
 
     // Create profile for new users only

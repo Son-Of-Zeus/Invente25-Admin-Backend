@@ -93,17 +93,114 @@ router.get(
         )
       ).rows;
 
+      // Online vs Attended stats for this specific event
+      const onlineVsAttended = (
+        await db.query(
+          `
+          SELECT 
+            COUNT(DISTINCT CASE WHEN r.method = 'online' THEN p.user_email END)::int AS online_registered,
+            COUNT(DISTINCT CASE WHEN s.attended = true THEN p.user_email END)::int AS actually_attended,
+            COUNT(DISTINCT CASE WHEN r.method = 'online' AND s.attended = true THEN p.user_email END)::int AS online_and_attended
+          FROM slots s
+          JOIN passes p ON s.pass_id = p.pass_id
+          JOIN receipts r ON p.payment_id = r.payment_id
+          WHERE s.event_id = $1
+          `,
+          [eventId]
+        )
+      ).rows[0];
+
       return res.json({
         event: eventRow,
         totals: {
           registrations: totals.registrations,
           attendance: totals.attendance,
+          online_registered: onlineVsAttended.online_registered || 0,
+          actually_attended: onlineVsAttended.actually_attended || 0,
+          online_and_attended: onlineVsAttended.online_and_attended || 0,
         },
         registrations: registrations, // --- RESPONSE KEY UPDATED ---
         event_admins: eventAdmins,
       });
     } catch (err) {
       console.error("analytics/event error", err);
+      return res.status(500).json({ error: "server error" });
+    }
+  }
+);
+
+// Event-level participants list with filtering
+router.get(
+  "/event/:eventId/participants",
+  authMiddleware,
+  requireRole(["event_admin", "super_admin", "master_admin", "dept_admin"]),
+  async (req, res) => {
+    try {
+      const eventId = Number(req.params.eventId);
+      const { payment_method, attended } = req.query;
+
+      // Verify event exists and user has access
+      const eventRes = await db.query(
+        "SELECT external_id, name, event_type, department_id FROM events WHERE external_id=$1",
+        [eventId]
+      );
+      const event = eventRes.rows[0];
+      if (!event) {
+        return res.status(404).json({ error: "event not found" });
+      }
+
+      // Access control
+      if (req.user.role === "event_admin") {
+        if (!req.user.event_id || req.user.event_id !== eventId) {
+          return res.status(403).json({ error: "unauthorized" });
+        }
+      } else if (req.user.role === "dept_admin") {
+        if (event.department_id !== req.user.department_id) {
+          return res.status(403).json({ error: "unauthorized" });
+        }
+      }
+
+      // Build query with filters
+      let query = `
+        SELECT DISTINCT
+          p.user_email,
+          u.name,
+          u.phone,
+          u.institution,
+          r.method as payment_method,
+          s.attended as attended_this_event,
+          s.created_at as registration_date
+        FROM slots s
+        JOIN passes p ON s.pass_id = p.pass_id
+        JOIN users u ON p.user_email = u.email
+        JOIN receipts r ON p.payment_id = r.payment_id
+        WHERE s.event_id = $1
+      `;
+      
+      const params = [eventId];
+      
+      if (payment_method) {
+        query += ` AND r.method = $${params.length + 1}`;
+        params.push(payment_method);
+      }
+      
+      if (attended === 'true') {
+        query += ` AND s.attended = true`;
+      } else if (attended === 'false') {
+        query += ` AND s.attended = false`;
+      }
+      
+      query += ` ORDER BY u.name`;
+
+      const participants = await db.query(query, params);
+
+      return res.json({
+        event,
+        participants: participants.rows,
+        filters: { payment_method, attended }
+      });
+    } catch (err) {
+      console.error("Event participants error:", err);
       return res.status(500).json({ error: "server error" });
     }
   }
@@ -286,6 +383,44 @@ router.get(
         )
       ).rows[0];
 
+      // Online vs attended analytics by event type
+      const onlineAttendedRes = (
+        await db.query(
+          `
+      SELECT 
+        e.event_type,
+        COUNT(DISTINCT s.pass_id)::int AS total_registered,
+        COUNT(DISTINCT CASE WHEN r.method = 'online' THEN s.pass_id END)::int AS online_registered,
+        COUNT(DISTINCT CASE WHEN s.attended = true THEN s.pass_id END)::int AS attended_count
+      FROM slots s
+      JOIN passes p ON s.pass_id = p.pass_id
+      JOIN receipts r ON p.payment_id = r.payment_id
+      JOIN events e ON s.event_id = e.external_id
+      WHERE e.department_id = $1
+      GROUP BY e.event_type
+    `,
+          [deptId]
+        )
+      ).rows;
+
+      // Overall department online vs attended stats
+      const overallOnlineRes = (
+        await db.query(
+          `
+      SELECT 
+        COUNT(DISTINCT s.pass_id)::int AS total_registered,
+        COUNT(DISTINCT CASE WHEN r.method = 'online' THEN s.pass_id END)::int AS online_registered,
+        COUNT(DISTINCT CASE WHEN s.attended = true THEN s.pass_id END)::int AS attended_count
+      FROM slots s
+      JOIN passes p ON s.pass_id = p.pass_id
+      JOIN receipts r ON p.payment_id = r.payment_id
+      JOIN events e ON s.event_id = e.external_id
+      WHERE e.department_id = $1
+    `,
+          [deptId]
+        )
+      ).rows[0];
+
       // Add hackathon data if this is ECE department (department_id = 4)
       let hackathonData = null;
       if (deptId === 4) {
@@ -366,6 +501,31 @@ router.get(
         };
       }
 
+      // Enhanced breakdown with online vs attended stats
+      const enhancedBreakdown = {
+        technical: {
+          registrations: tech_registrations,
+          attendance: tech_attendance,
+        },
+        non_technical: {
+          registrations: nontech_registrations,
+          attendance: nontech_attendance,
+        },
+      };
+
+      // Add online vs attended data to breakdown
+      onlineAttendedRes.forEach(row => {
+        if (enhancedBreakdown[row.event_type.replace('-', '_')]) {
+          enhancedBreakdown[row.event_type.replace('-', '_')] = {
+            ...enhancedBreakdown[row.event_type.replace('-', '_')],
+            online_registered: parseInt(row.online_registered),
+            attended_count: parseInt(row.attended_count),
+            online_percentage: row.total_registered > 0 ? 
+              ((row.online_registered / row.total_registered) * 100).toFixed(1) : "0.0"
+          };
+        }
+      });
+
       const responseData = {
         department: deptRow,
         totals: {
@@ -374,23 +534,26 @@ router.get(
           total_attendance,
           total_revenue: revenueRes.total_revenue,
           avg_transaction: revenueRes.avg_transaction,
+          online_registered: parseInt(overallOnlineRes.online_registered),
+          attended_count: parseInt(overallOnlineRes.attended_count),
+          online_percentage: overallOnlineRes.total_registered > 0 ? 
+            ((overallOnlineRes.online_registered / overallOnlineRes.total_registered) * 100).toFixed(1) : "0.0"
         },
-        breakdown: {
-          technical: {
-            registrations: tech_registrations,
-            attendance: tech_attendance,
-          },
-          non_technical: {
-            registrations: nontech_registrations,
-            attendance: nontech_attendance,
-          },
-        },
+        breakdown: enhancedBreakdown,
         event_type_breakdown: eventTypeBreakdown,
         per_event: perEvent,
         top_event_by_registrations,
         top_event_by_attendance,
         registrations_over_time: timeRes,
         passes_by_payment: passesByPayment,
+        online_vs_attended_by_type: onlineAttendedRes.map(row => ({
+          event_type: row.event_type,
+          total_registered: parseInt(row.total_registered),
+          online_registered: parseInt(row.online_registered),
+          attended_count: parseInt(row.attended_count),
+          online_percentage: row.total_registered > 0 ? 
+            ((row.online_registered / row.total_registered) * 100).toFixed(1) : "0.0"
+        }))
       };
 
       // Add hackathon data to response if ECE department
@@ -401,6 +564,120 @@ router.get(
       return res.json(responseData);
     } catch (err) {
       console.error("analytics/department error", err);
+      return res.status(500).json({ error: "server error" });
+    }
+  }
+);
+
+// Department-level participants list with filtering
+router.get(
+  "/department/:id/participants",
+  authMiddleware,
+  requireRole(["dept_admin", "super_admin", "master_admin"]),
+  async (req, res) => {
+    try {
+      const departmentId = Number(req.params.id);
+      const { payment_method, attended, event_type } = req.query;
+
+      // Access control
+      if (req.user.role === "dept_admin" && req.user.department_id !== departmentId) {
+        return res.status(403).json({ error: "unauthorized" });
+      }
+
+      // Verify department exists
+      const deptRes = await db.query(
+        "SELECT id, name FROM departments WHERE id=$1",
+        [departmentId]
+      );
+      const department = deptRes.rows[0];
+      if (!department) {
+        return res.status(404).json({ error: "department not found" });
+      }
+
+      // Build main query with deduplication and filters
+      let query = `
+        SELECT DISTINCT ON (p.user_email)
+          p.user_email,
+          u.name,
+          u.phone,
+          u.institution,
+          r.method as payment_method,
+          e.name as event_name,
+          e.external_id as event_id,
+          e.event_type,
+          s.attended,
+          s.created_at as registration_date
+        FROM slots s
+        JOIN passes p ON s.pass_id = p.pass_id
+        JOIN users u ON p.user_email = u.email
+        JOIN receipts r ON p.payment_id = r.payment_id
+        JOIN events e ON s.event_id = e.external_id
+        WHERE e.department_id = $1
+      `;
+      
+      const params = [departmentId];
+      
+      if (payment_method) {
+        query += ` AND r.method = $${params.length + 1}`;
+        params.push(payment_method);
+      }
+      
+      if (attended === 'true') {
+        query += ` AND s.attended = true`;
+      } else if (attended === 'false') {
+        query += ` AND s.attended = false`;
+      }
+      
+      if (event_type) {
+        query += ` AND e.event_type = $${params.length + 1}`;
+        params.push(event_type);
+      }
+      
+      query += ` ORDER BY p.user_email, s.created_at DESC`;
+
+      const participants = await db.query(query, params);
+
+      // Add hackathon participants if this is ECE department (department_id = 4)
+      let hackathonParticipants = [];
+      if (departmentId === 4) {
+        let hackQuery = `
+          SELECT DISTINCT
+            hd.email as user_email,
+            hd.full_name as name,
+            hd.phone_number as phone,
+            hd.institution,
+            'hackathon' as event_type,
+            hp.team_name,
+            hp.track,
+            hp.attended,
+            hp.created_at as registration_date
+          FROM hack_reg_details hd
+          JOIN hack_passes hp ON hd.team_id = hp.team_id
+          WHERE 1=1
+        `;
+        
+        const hackParams = [];
+        
+        if (attended === 'true') {
+          hackQuery += ` AND hp.attended = true`;
+        } else if (attended === 'false') {
+          hackQuery += ` AND hp.attended = false`;
+        }
+        
+        hackQuery += ` ORDER BY hd.full_name`;
+        
+        const hackRes = await db.query(hackQuery, hackParams);
+        hackathonParticipants = hackRes.rows;
+      }
+
+      return res.json({
+        department,
+        participants: participants.rows,
+        hackathon_participants: hackathonParticipants,
+        filters: { payment_method, attended, event_type }
+      });
+    } catch (err) {
+      console.error("Department participants error:", err);
       return res.status(500).json({ error: "server error" });
     }
   }
@@ -420,7 +697,7 @@ router.get(
       }
 
     
-        // Basic totals
+        // Basic totals by event type
         const totalsRes = (
         await db.query(`
       SELECT
@@ -433,7 +710,48 @@ router.get(
     `)
       ).rows[0];
 
-      // Revenue analytics
+      // Event type specific totals
+      const eventTypeTotals = (
+        await db.query(`
+      SELECT 
+        -- Technical events
+        (SELECT COUNT(s.*) FROM slots s 
+         JOIN events e ON s.event_id = e.external_id 
+         WHERE e.event_type = 'technical')::int AS tech_registrations,
+        (SELECT COALESCE(SUM(r.amount), 0) FROM slots s 
+         JOIN events e ON s.event_id = e.external_id 
+         JOIN passes p ON s.pass_id = p.pass_id 
+         JOIN receipts r ON p.payment_id = r.payment_id 
+         WHERE e.event_type = 'technical')::decimal AS tech_revenue,
+        
+        -- Non-technical events  
+        (SELECT COUNT(s.*) FROM slots s 
+         JOIN events e ON s.event_id = e.external_id 
+         WHERE e.event_type = 'non-technical')::int AS nontech_registrations,
+        (SELECT COALESCE(SUM(r.amount), 0) FROM slots s 
+         JOIN events e ON s.event_id = e.external_id 
+         JOIN passes p ON s.pass_id = p.pass_id 
+         JOIN receipts r ON p.payment_id = r.payment_id 
+         WHERE e.event_type = 'non-technical')::decimal AS nontech_revenue,
+        
+        -- Workshop events
+        (SELECT COUNT(s.*) FROM slots s 
+         JOIN events e ON s.event_id = e.external_id 
+         WHERE e.event_type = 'workshop')::int AS workshop_registrations,
+        (SELECT COALESCE(SUM(r.amount), 0) FROM slots s 
+         JOIN events e ON s.event_id = e.external_id 
+         JOIN passes p ON s.pass_id = p.pass_id 
+         JOIN receipts r ON p.payment_id = r.payment_id 
+         WHERE e.event_type = 'workshop')::decimal AS workshop_revenue,
+        
+        -- Hackathon (separate table)
+        (SELECT COUNT(*) FROM hack_passes)::int AS hackathon_teams,
+        (SELECT COALESCE(SUM(r.amount), 0) FROM hack_passes h 
+         JOIN receipts r ON h.payment_id = r.payment_id)::decimal AS hackathon_revenue
+    `)
+      ).rows[0];
+
+      // Overall revenue analytics
       const revenueRes = (
         await db.query(`
       SELECT 
@@ -533,6 +851,58 @@ router.get(
       FROM passes p
       JOIN receipts r ON p.payment_id = r.payment_id
       GROUP BY r.method
+    `)
+      ).rows;
+
+      // Payment analytics by event type
+      const paymentByEventType = (
+        await db.query(`
+      SELECT 
+        e.event_type,
+        r.method,
+        COUNT(DISTINCT p.pass_id)::int AS passes,
+        COALESCE(SUM(r.amount), 0)::decimal AS revenue
+      FROM passes p
+      JOIN receipts r ON p.payment_id = r.payment_id
+      JOIN slots s ON p.pass_id = s.pass_id
+      JOIN events e ON s.event_id = e.external_id
+      GROUP BY e.event_type, r.method
+      UNION ALL
+      SELECT 
+        'hackathon' as event_type,
+        r.method,
+        COUNT(DISTINCT h.team_id)::int AS passes,
+        COALESCE(SUM(r.amount), 0)::decimal AS revenue
+      FROM hack_passes h
+      JOIN receipts r ON h.payment_id = r.payment_id
+      GROUP BY r.method
+      ORDER BY event_type, method
+    `)
+      ).rows;
+
+      // Attendance analytics by payment method and event type
+      const attendanceByPaymentType = (
+        await db.query(`
+      SELECT 
+        e.event_type,
+        r.method,
+        COUNT(DISTINCT p.pass_id)::int AS total_registrations,
+        COUNT(DISTINCT CASE WHEN s.attended = true THEN p.pass_id END)::int AS attended_count
+      FROM passes p
+      JOIN receipts r ON p.payment_id = r.payment_id
+      JOIN slots s ON p.pass_id = s.pass_id
+      JOIN events e ON s.event_id = e.external_id
+      GROUP BY e.event_type, r.method
+      UNION ALL
+      SELECT 
+        'hackathon' as event_type,
+        r.method,
+        COUNT(DISTINCT h.team_id)::int AS total_registrations,
+        COUNT(DISTINCT CASE WHEN h.attended = true THEN h.team_id END)::int AS attended_count
+      FROM hack_passes h
+      JOIN receipts r ON h.payment_id = r.payment_id
+      GROUP BY r.method
+      ORDER BY event_type, method
     `)
       ).rows;
 
@@ -663,12 +1033,23 @@ router.get(
           avg_transaction: revenueRes.avg_transaction,
           total_transactions: revenueRes.total_transactions,
           online_payer_stats: onlinePayerStats,
+          // New event type specific totals
+          tech_registrations: eventTypeTotals.tech_registrations,
+          tech_revenue: eventTypeTotals.tech_revenue,
+          nontech_registrations: eventTypeTotals.nontech_registrations,
+          nontech_revenue: eventTypeTotals.nontech_revenue,
+          workshop_registrations: eventTypeTotals.workshop_registrations,
+          workshop_revenue: eventTypeTotals.workshop_revenue,
+          hackathon_teams: eventTypeTotals.hackathon_teams,
+          hackathon_revenue: eventTypeTotals.hackathon_revenue,
         },
         per_department: perDept,
         event_type_breakdown: eventTypeBreakdown,
         top_events: topEvents,
         registrations_over_time: timeRes,
         passes_by_payment: passesByPayment,
+        payment_by_event_type: paymentByEventType,
+        attendance_by_payment_type: attendanceByPaymentType,
         workshops: {
           analytics: workshopAnalytics,
           summary: {
@@ -702,6 +1083,115 @@ router.get(
       });
     } catch (err) {
       console.error("analytics/college error", err);
+      return res.status(500).json({ error: "server error" });
+    }
+  }
+);
+
+// College-level participants list with filtering
+router.get(
+  "/college/participants",
+  authMiddleware,
+  requireRole(["super_admin", "master_admin"]),
+  async (req, res) => {
+    try {
+      const { payment_method, attended, event_type, department_id } = req.query;
+
+      // Build main query with deduplication and filters
+      let query = `
+        SELECT DISTINCT ON (p.user_email)
+          p.user_email,
+          u.name,
+          u.phone,
+          u.institution,
+          r.method as payment_method,
+          e.name as event_name,
+          e.external_id as event_id,
+          e.event_type,
+          d.name as department_name,
+          d.id as department_id,
+          s.attended,
+          s.created_at as registration_date
+        FROM slots s
+        JOIN passes p ON s.pass_id = p.pass_id
+        JOIN users u ON p.user_email = u.email
+        JOIN receipts r ON p.payment_id = r.payment_id
+        JOIN events e ON s.event_id = e.external_id
+        JOIN departments d ON e.department_id = d.id
+        WHERE d.name != 'WORKSHOP'
+      `;
+      
+      const params = [];
+      
+      if (payment_method) {
+        query += ` AND r.method = $${params.length + 1}`;
+        params.push(payment_method);
+      }
+      
+      if (attended === 'true') {
+        query += ` AND s.attended = true`;
+      } else if (attended === 'false') {
+        query += ` AND s.attended = false`;
+      }
+      
+      if (event_type) {
+        query += ` AND e.event_type = $${params.length + 1}`;
+        params.push(event_type);
+      }
+      
+      if (department_id) {
+        query += ` AND d.id = $${params.length + 1}`;
+        params.push(parseInt(department_id));
+      }
+      
+      query += ` ORDER BY p.user_email, s.created_at DESC`;
+
+      const participants = await db.query(query, params);
+
+      // Add hackathon participants
+      let hackathonParticipants = [];
+      let hackQuery = `
+        SELECT DISTINCT
+          hd.email as user_email,
+          hd.full_name as name,
+          hd.phone_number as phone,
+          hd.institution,
+          'hackathon' as event_type,
+          'ECE' as department_name,
+          4 as department_id,
+          hp.team_name,
+          hp.track,
+          hp.attended,
+          hp.created_at as registration_date
+        FROM hack_reg_details hd
+        JOIN hack_passes hp ON hd.team_id = hp.team_id
+        WHERE 1=1
+      `;
+      
+      const hackParams = [];
+      
+      if (attended === 'true') {
+        hackQuery += ` AND hp.attended = true`;
+      } else if (attended === 'false') {
+        hackQuery += ` AND hp.attended = false`;
+      }
+      
+      if (event_type && event_type !== 'hackathon') {
+        // If filtering by specific event type other than hackathon, exclude hackathon data
+        hackathonParticipants = [];
+      } else {
+        hackQuery += ` ORDER BY hd.full_name`;
+        const hackRes = await db.query(hackQuery, hackParams);
+        hackathonParticipants = hackRes.rows;
+      }
+
+      return res.json({
+        participants: participants.rows,
+        hackathon_participants: hackathonParticipants,
+        filters: { payment_method, attended, event_type, department_id }
+      });
+    } catch (err) {
+      console.error("College participants error:", err);
       return res.status(500).json({ error: "server error" });
     }
   }
