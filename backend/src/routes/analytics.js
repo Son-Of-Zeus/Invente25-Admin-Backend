@@ -277,7 +277,7 @@ router.get(
       const total_registrations = tech_registrations + nontech_registrations;
       const total_attendance = tech_attendance + nontech_attendance;
 
-      // Per-event breakdown with event types
+      // Per-event breakdown with event types - showing only non-technical revenue
       const perEvent = (
         await db.query(
           `
@@ -288,9 +288,14 @@ router.get(
         e.cost,
         COUNT(s.*)::int AS registrations,
         COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END),0)::int AS attendance,
-        COALESCE(SUM(e.cost), 0)::decimal AS revenue
+        CASE 
+          WHEN e.event_type = 'non-technical' THEN COALESCE(SUM(r.amount), 0)
+          ELSE 0
+        END::decimal AS revenue
       FROM events e
       LEFT JOIN slots s ON s.event_id = e.external_id
+      LEFT JOIN passes p ON p.pass_id = s.pass_id
+      LEFT JOIN receipts r ON r.payment_id = p.payment_id
       WHERE e.department_id = $1
       GROUP BY e.external_id, e.name, e.event_type, e.cost
       ORDER BY registrations DESC, e.name
@@ -299,7 +304,7 @@ router.get(
         )
       ).rows;
 
-      // Event type breakdown
+      // Event type breakdown - showing only non-technical revenue
       const eventTypeBreakdown = (
         await db.query(
           `
@@ -308,9 +313,14 @@ router.get(
         COUNT(DISTINCT e.external_id)::int AS event_count,
         COUNT(s.*)::int AS total_registrations,
         COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END),0)::int AS total_attendance,
-        COALESCE(SUM(e.cost), 0)::decimal AS total_revenue
+        CASE 
+          WHEN e.event_type = 'non-technical' THEN COALESCE(SUM(r.amount), 0)
+          ELSE 0
+        END::decimal AS total_revenue
       FROM events e
       LEFT JOIN slots s ON s.event_id = e.external_id
+      LEFT JOIN passes p ON p.pass_id = s.pass_id
+      LEFT JOIN receipts r ON r.payment_id = p.payment_id
       WHERE e.department_id = $1
       GROUP BY e.event_type
       ORDER BY total_registrations DESC
@@ -377,7 +387,7 @@ router.get(
       JOIN receipts r ON p.payment_id = r.payment_id
       JOIN slots s ON s.pass_id = p.pass_id
       JOIN events e ON s.event_id = e.external_id
-      WHERE e.department_id = $1
+      WHERE e.department_id = $1 AND e.event_type = 'non-technical'
     `,
           [deptId]
         )
@@ -594,19 +604,22 @@ router.get(
         return res.status(404).json({ error: "department not found" });
       }
 
-      // Build main query with deduplication and filters
+      // Build aggregated query with user details and event lists
       let query = `
-        SELECT DISTINCT ON (p.user_email)
+        SELECT 
           p.user_email,
           u.name,
           u.phone,
           u.institution,
-          r.method as payment_method,
-          e.name as event_name,
-          e.external_id as event_id,
-          e.event_type,
-          s.attended,
-          s.created_at as registration_date
+          COUNT(DISTINCT p.pass_id) as total_passes,
+          STRING_AGG(DISTINCT e.name, ', ' ORDER BY e.name) as registered_events,
+          COUNT(DISTINCT s.slot_no) as total_registrations,
+          COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) as attended_count,
+          MIN(s.created_at) as first_registration_date,
+          CASE 
+            WHEN COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) > 0 THEN true
+            ELSE false
+          END as attended_any_event
         FROM slots s
         JOIN passes p ON s.pass_id = p.pass_id
         JOIN users u ON p.user_email = u.email
@@ -622,18 +635,23 @@ router.get(
         params.push(payment_method);
       }
       
-      if (attended === 'true') {
-        query += ` AND s.attended = true`;
-      } else if (attended === 'false') {
-        query += ` AND s.attended = false`;
-      }
-      
       if (event_type) {
         query += ` AND e.event_type = $${params.length + 1}`;
         params.push(event_type);
       }
       
-      query += ` ORDER BY p.user_email, s.created_at DESC`;
+      query += ` 
+        GROUP BY p.user_email, u.name, u.phone, u.institution
+      `;
+      
+      // Apply attended filter after aggregation
+      if (attended === 'true') {
+        query += ` HAVING COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) > 0`;
+      } else if (attended === 'false') {
+        query += ` HAVING COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) = 0`;
+      }
+      
+      query += ` ORDER BY u.name`;
 
       const participants = await db.query(query, params);
 
@@ -718,11 +736,32 @@ router.get(
         (SELECT COUNT(s.*) FROM slots s 
          JOIN events e ON s.event_id = e.external_id 
          WHERE e.event_type = 'technical')::int AS tech_registrations,
-        (SELECT COALESCE(SUM(r.amount), 0) FROM slots s 
+        -- Technical online registrations
+        (SELECT COUNT(DISTINCT s.pass_id) FROM slots s 
          JOIN events e ON s.event_id = e.external_id 
          JOIN passes p ON s.pass_id = p.pass_id 
          JOIN receipts r ON p.payment_id = r.payment_id 
-         WHERE e.event_type = 'technical')::decimal AS tech_revenue,
+         WHERE e.event_type = 'technical' AND r.method = 'online')::int AS tech_online_registered,
+        -- Technical revenue: count distinct tech passes and multiply by 300
+        (SELECT COUNT(DISTINCT p.pass_id) * 300 FROM passes p
+         WHERE p.pass_id IN (
+           -- Tech passes with 0 slots
+           SELECT p2.pass_id FROM passes p2 
+           LEFT JOIN slots s ON p2.pass_id = s.pass_id 
+           WHERE s.pass_id IS NULL
+           UNION
+           -- Tech passes with >1 slots  
+           SELECT p3.pass_id FROM passes p3
+           JOIN slots s2 ON p3.pass_id = s2.pass_id
+           GROUP BY p3.pass_id HAVING COUNT(*) > 1
+           UNION
+           -- Tech passes with exactly 1 slot for technical events
+           SELECT p4.pass_id FROM passes p4
+           JOIN slots s3 ON p4.pass_id = s3.pass_id
+           JOIN events e ON s3.event_id = e.external_id
+           WHERE e.event_type = 'technical'
+           GROUP BY p4.pass_id HAVING COUNT(*) = 1
+         ))::decimal AS tech_revenue,
         
         -- Non-technical events  
         (SELECT COUNT(s.*) FROM slots s 
@@ -762,7 +801,7 @@ router.get(
     `)
       ).rows[0];
 
-      // Department analytics (excluding WORKSHOP)
+      // Department analytics (excluding WORKSHOP) - showing only non-technical revenue
       const perDept = (
         await db.query(`
       SELECT
@@ -771,7 +810,7 @@ router.get(
         COUNT(DISTINCT e.external_id)::int AS event_count,
         COUNT(s.*)::int AS registrations,
         COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END),0)::int AS attendance,
-        COALESCE(SUM(r.amount), 0)::decimal AS revenue
+        COALESCE(SUM(CASE WHEN e.event_type = 'non-technical' THEN r.amount ELSE 0 END), 0)::decimal AS revenue
       FROM departments d
       LEFT JOIN events e ON e.department_id = d.id
       LEFT JOIN slots s ON s.event_id = e.external_id
@@ -783,24 +822,59 @@ router.get(
     `)
       ).rows;
 
-      // Event type breakdown
-      const eventTypeBreakdown = (
-        await db.query(`
-      SELECT
-        e.event_type,
-        COUNT(DISTINCT e.external_id)::int AS event_count,
-        COUNT(s.*)::int AS total_registrations,
-        COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END),0)::int AS total_attendance,
-        COALESCE(SUM(r.amount), 0)::decimal AS total_revenue
-      FROM events e
-      LEFT JOIN slots s ON s.event_id = e.external_id
-      LEFT JOIN passes p ON p.pass_id = s.pass_id
-      LEFT JOIN receipts r ON r.payment_id = p.payment_id
-      WHERE e.department_id != (SELECT id FROM departments WHERE name = 'WORKSHOP')
-      GROUP BY e.event_type
-      ORDER BY total_registrations DESC
-    `)
-      ).rows;
+      // Event type breakdown with corrected technical revenue calculation
+      const eventTypeBreakdown = [];
+      
+      // Get technical event breakdown
+      const techBreakdown = await db.query(`
+        SELECT
+          'technical' as event_type,
+          COUNT(DISTINCT e.external_id)::int AS event_count,
+          COUNT(s.*)::int AS total_registrations,
+          COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END),0)::int AS total_attendance,
+          -- Count distinct tech passes × 300
+          (SELECT COUNT(DISTINCT p2.pass_id) * 300 FROM passes p2
+           WHERE p2.pass_id IN (
+             -- Tech passes with 0 slots
+             SELECT p3.pass_id FROM passes p3 
+             LEFT JOIN slots s3 ON p3.pass_id = s3.pass_id 
+             WHERE s3.pass_id IS NULL
+             UNION
+             -- Tech passes with >1 slots  
+             SELECT p4.pass_id FROM passes p4
+             JOIN slots s4 ON p4.pass_id = s4.pass_id
+             GROUP BY p4.pass_id HAVING COUNT(*) > 1
+             UNION
+             -- Tech passes with exactly 1 slot for technical events
+             SELECT p5.pass_id FROM passes p5
+             JOIN slots s5 ON p5.pass_id = s5.pass_id
+             JOIN events e5 ON s5.event_id = e5.external_id
+             WHERE e5.event_type = 'technical'
+             GROUP BY p5.pass_id HAVING COUNT(*) = 1
+           ))::decimal AS total_revenue
+        FROM events e
+        LEFT JOIN slots s ON s.event_id = e.external_id
+        WHERE e.event_type = 'technical' AND e.department_id != (SELECT id FROM departments WHERE name = 'WORKSHOP')
+      `);
+      
+      // Get non-technical and workshop event breakdowns
+      const otherBreakdown = await db.query(`
+        SELECT
+          e.event_type,
+          COUNT(DISTINCT e.external_id)::int AS event_count,
+          COUNT(s.*)::int AS total_registrations,
+          COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END),0)::int AS total_attendance,
+          COALESCE(SUM(r.amount), 0)::decimal AS total_revenue
+        FROM events e
+        LEFT JOIN slots s ON s.event_id = e.external_id
+        LEFT JOIN passes p ON p.pass_id = s.pass_id
+        LEFT JOIN receipts r ON r.payment_id = p.payment_id
+        WHERE e.event_type != 'technical' AND e.department_id != (SELECT id FROM departments WHERE name = 'WORKSHOP')
+        GROUP BY e.event_type
+        ORDER BY total_registrations DESC
+      `);
+      
+      eventTypeBreakdown.push(...techBreakdown.rows, ...otherBreakdown.rows);
 
       // Top events
       const topEvents = (
@@ -1036,6 +1110,10 @@ router.get(
           // New event type specific totals
           tech_registrations: eventTypeTotals.tech_registrations,
           tech_revenue: eventTypeTotals.tech_revenue,
+          tech_passes_count: Math.floor(eventTypeTotals.tech_revenue / 300),
+          tech_online_registered: eventTypeTotals.tech_online_registered,
+          tech_online_percentage: eventTypeTotals.tech_registrations > 0 ? 
+            ((eventTypeTotals.tech_online_registered / eventTypeTotals.tech_registrations) * 100).toFixed(1) : "0.0",
           nontech_registrations: eventTypeTotals.nontech_registrations,
           nontech_revenue: eventTypeTotals.nontech_revenue,
           workshop_registrations: eventTypeTotals.workshop_registrations,
@@ -1097,21 +1175,22 @@ router.get(
     try {
       const { payment_method, attended, event_type, department_id } = req.query;
 
-      // Build main query with deduplication and filters
+      // Build aggregated query with user details and event lists for all departments
       let query = `
-        SELECT DISTINCT ON (p.user_email)
+        SELECT 
           p.user_email,
           u.name,
           u.phone,
           u.institution,
-          r.method as payment_method,
-          e.name as event_name,
-          e.external_id as event_id,
-          e.event_type,
-          d.name as department_name,
-          d.id as department_id,
-          s.attended,
-          s.created_at as registration_date
+          COUNT(DISTINCT p.pass_id) as total_passes,
+          STRING_AGG(DISTINCT e.name, ', ' ORDER BY e.name) as registered_events,
+          COUNT(DISTINCT s.slot_no) as total_registrations,
+          COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) as attended_count,
+          MIN(s.created_at) as first_registration_date,
+          CASE 
+            WHEN COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) > 0 THEN true
+            ELSE false
+          END as attended_any_event
         FROM slots s
         JOIN passes p ON s.pass_id = p.pass_id
         JOIN users u ON p.user_email = u.email
@@ -1128,12 +1207,6 @@ router.get(
         params.push(payment_method);
       }
       
-      if (attended === 'true') {
-        query += ` AND s.attended = true`;
-      } else if (attended === 'false') {
-        query += ` AND s.attended = false`;
-      }
-      
       if (event_type) {
         query += ` AND e.event_type = $${params.length + 1}`;
         params.push(event_type);
@@ -1144,9 +1217,79 @@ router.get(
         params.push(parseInt(department_id));
       }
       
-      query += ` ORDER BY p.user_email, s.created_at DESC`;
+      query += ` 
+        GROUP BY p.user_email, u.name, u.phone, u.institution
+      `;
+      
+      // Apply attended filter after aggregation
+      if (attended === 'true') {
+        query += ` HAVING COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) > 0`;
+      } else if (attended === 'false') {
+        query += ` HAVING COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) = 0`;
+      }
+      
+      query += ` ORDER BY u.name`;
 
       const participants = await db.query(query, params);
+
+      // Add workshop participants
+      let workshopParticipants = [];
+      if (!event_type || event_type === 'workshop') {
+        let workshopQuery = `
+          SELECT 
+            p.user_email,
+            u.name,
+            u.phone,
+            u.institution,
+            COUNT(DISTINCT p.pass_id) as total_passes,
+            STRING_AGG(DISTINCT e.name, ', ' ORDER BY e.name) as registered_events,
+            COUNT(DISTINCT s.slot_no) as total_registrations,
+            COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) as attended_count,
+            MIN(s.created_at) as first_registration_date,
+            CASE 
+              WHEN COUNT(DISTINCT CASE WHEN s.attended = true THEN s.slot_no END) > 0 THEN true
+              ELSE false
+            END as attended_any_event
+          FROM slots s
+          JOIN passes p ON s.pass_id = p.pass_id
+          JOIN users u ON p.user_email = u.email
+          JOIN receipts r ON p.payment_id = r.payment_id
+          JOIN events e ON s.event_id = e.external_id
+          JOIN departments d ON e.department_id = d.id
+          WHERE d.name = 'WORKSHOP'
+        `;
+        
+        const workshopParams = [];
+        
+        if (payment_method) {
+          workshopQuery += ` AND r.method = $${workshopParams.length + 1}`;
+          workshopParams.push(payment_method);
+        }
+        
+        if (attended === 'true') {
+          workshopQuery += ` AND s.attended = true`;
+        } else if (attended === 'false') {
+          workshopQuery += ` AND s.attended = false`;
+        }
+        
+        if (department_id) {
+          const workshopDeptId = await db.query("SELECT id FROM departments WHERE name = 'WORKSHOP'");
+          if (workshopDeptId.rows.length > 0 && parseInt(department_id) === workshopDeptId.rows[0].id) {
+            // Include workshops if filtering by WORKSHOP department
+            workshopQuery += ` GROUP BY p.user_email, u.name, u.phone, u.institution ORDER BY first_registration_date ASC`;
+            const workshopRes = await db.query(workshopQuery, workshopParams);
+            workshopParticipants = workshopRes.rows;
+          } else {
+            // Exclude workshops if filtering by a different department
+            workshopParticipants = [];
+          }
+        } else {
+          // No department filter, include all workshops
+          workshopQuery += ` GROUP BY p.user_email, u.name, u.phone, u.institution ORDER BY first_registration_date ASC`;
+          const workshopRes = await db.query(workshopQuery, workshopParams);
+          workshopParticipants = workshopRes.rows;
+        }
+      }
 
       // Add hackathon participants
       let hackathonParticipants = [];
@@ -1187,6 +1330,7 @@ router.get(
 
       return res.json({
         participants: participants.rows,
+        workshop_participants: workshopParticipants,
         hackathon_participants: hackathonParticipants,
         filters: { payment_method, attended, event_type, department_id }
       });
@@ -1371,9 +1515,43 @@ async function getCollegeAnalyticsDataForExport() {
   `)
   ).rows;
 
-  // Event type breakdown
-  const eventTypeBreakdown = (
-    await db.query(`
+  // Event type breakdown with corrected technical revenue calculation
+  const eventTypeBreakdown = [];
+  
+  // Get technical event breakdown
+  const techBreakdown = await db.query(`
+    SELECT
+      'technical' as event_type,
+      COUNT(DISTINCT e.external_id)::int AS event_count,
+      COUNT(s.*)::int AS total_registrations,
+      COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END),0)::int AS total_attendance,
+      -- Count distinct tech passes × 300
+      (SELECT COUNT(DISTINCT p2.pass_id) * 300 FROM passes p2
+       WHERE p2.pass_id IN (
+         -- Tech passes with 0 slots
+         SELECT p3.pass_id FROM passes p3 
+         LEFT JOIN slots s3 ON p3.pass_id = s3.pass_id 
+         WHERE s3.pass_id IS NULL
+         UNION
+         -- Tech passes with >1 slots  
+         SELECT p4.pass_id FROM passes p4
+         JOIN slots s4 ON p4.pass_id = s4.pass_id
+         GROUP BY p4.pass_id HAVING COUNT(*) > 1
+         UNION
+         -- Tech passes with exactly 1 slot for technical events
+         SELECT p5.pass_id FROM passes p5
+         JOIN slots s5 ON p5.pass_id = s5.pass_id
+         JOIN events e5 ON s5.event_id = e5.external_id
+         WHERE e5.event_type = 'technical'
+         GROUP BY p5.pass_id HAVING COUNT(*) = 1
+       ))::decimal AS total_revenue
+    FROM events e
+    LEFT JOIN slots s ON s.event_id = e.external_id
+    WHERE e.event_type = 'technical' AND e.department_id != (SELECT id FROM departments WHERE name = 'WORKSHOP')
+  `);
+  
+  // Get non-technical and workshop event breakdowns  
+  const otherBreakdown = await db.query(`
     SELECT
       e.event_type,
       COUNT(DISTINCT e.external_id)::int AS event_count,
@@ -1384,11 +1562,12 @@ async function getCollegeAnalyticsDataForExport() {
     LEFT JOIN slots s ON s.event_id = e.external_id
     LEFT JOIN passes p ON p.pass_id = s.pass_id
     LEFT JOIN receipts r ON r.payment_id = p.payment_id
-    WHERE e.department_id != (SELECT id FROM departments WHERE name = 'WORKSHOP')
+    WHERE e.event_type != 'technical' AND e.department_id != (SELECT id FROM departments WHERE name = 'WORKSHOP')
     GROUP BY e.event_type
     ORDER BY total_registrations DESC
-  `)
-  ).rows;
+  `);
+  
+  eventTypeBreakdown.push(...techBreakdown.rows, ...otherBreakdown.rows);
 
   // Top events
   const topEvents = (

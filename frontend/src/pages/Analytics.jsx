@@ -575,7 +575,7 @@ function DepartmentViewContent({
             {fmt(d.totals.total_registrations)}
           </div>
           <div className="text-xs text-gray-500 mt-1">
-            Online: {fmt(d.totals.online_registered || 0)} ({d.totals.online_percentage || '0.0'}%)
+            Tech Online: {fmt(d.totals.tech_online_registered || 0)} ({d.totals.tech_online_percentage || '0.0'}%)
           </div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-sm border">
@@ -1645,7 +1645,7 @@ function ParticipantListModal({
               <option value="hackathon">Hackathon</option>
               <option value="workshop">Workshop</option>
             </select>
-            {(scope === 'college' || scope === 'department') && (
+            {scope === 'college' && (
               <select
                 value={filters.department_id}
                 onChange={(e) => onFilterChange('department_id', e.target.value)}
@@ -1716,8 +1716,21 @@ function ParticipantListModal({
                 </div>
               )}
               
+              {/* Workshop participants table */}
+              {listData.data.workshop_participants?.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="font-semibold mb-3">Workshop Participants ({listData.data.workshop_participants.length} participants)</h4>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                       {/* ... table content remains the same ... */}
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {(!listData.data.participants || listData.data.participants.length === 0) &&
-               (!listData.data.hackathon_participants || listData.data.hackathon_participants.length === 0) && (
+               (!listData.data.hackathon_participants || listData.data.hackathon_participants.length === 0) &&
+               (!listData.data.workshop_participants || listData.data.workshop_participants.length === 0) && (
                 <div className="text-center py-8 text-gray-500">
                   No participants found with current filters
                 </div>
@@ -1859,23 +1872,44 @@ export default function AnalyticsPage() {
   };
 
   const handleExportWorkshop = () => {
-    if (!stats?.data) return;
-    const dataToExport = [{
-      'Event Type': 'Workshop',
-      'Total Registrations': stats.data.totals.workshop_registrations,
-      'Total Revenue': stats.data.totals.workshop_revenue,
-      'Online Payment %': (() => {
-        const workshopData = stats.data.payment_by_event_type?.filter(p => p.event_type === 'workshop') || [];
-        const onlineCount = workshopData.find(p => p.method === 'online')?.passes || 0;
-        const totalCount = workshopData.reduce((sum, p) => sum + p.passes, 0);
-        return totalCount > 0 ? Math.round((onlineCount / totalCount) * 100) : 0;
-      })() + '%'
+    if (!stats?.data?.workshops?.analytics) return;
+    
+    const workbook = XLSX.utils.book_new();
+    
+    // Individual workshop details
+    const workshopDetails = stats.data.workshops.analytics.map(ws => ({
+      'Workshop Name': ws.event_name,
+      'Workshop ID': ws.event_id,
+      'Cost': ws.cost,
+      'Registrations': ws.registrations,
+      'Attendance': ws.attendance,
+      'Revenue': ws.revenue,
+      'Attendance Rate': ws.registrations > 0 ? `${Math.round((ws.attendance / ws.registrations) * 100)}%` : '0%'
+    }));
+    
+    const detailsWorksheet = XLSX.utils.json_to_sheet(workshopDetails);
+    XLSX.utils.book_append_sheet(workbook, detailsWorksheet, "Workshop Details");
+    
+    // Summary sheet
+    const summaryData = [{
+      'Metric': 'Total Workshops',
+      'Value': stats.data.workshops.summary.total_workshops
+    }, {
+      'Metric': 'Total Registrations',
+      'Value': stats.data.workshops.summary.total_registrations
+    }, {
+      'Metric': 'Total Revenue',
+      'Value': stats.data.workshops.summary.total_revenue
+    }, {
+      'Metric': 'Average Revenue per Workshop',
+      'Value': stats.data.workshops.summary.total_workshops > 0 ? 
+        (stats.data.workshops.summary.total_revenue / stats.data.workshops.summary.total_workshops).toFixed(2) : 0
     }];
     
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Workshop Events");
-    XLSX.writeFile(workbook, `invente25-workshop-events-${new Date().toISOString().split("T")[0]}.xlsx`);
+    const summaryWorksheet = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(workbook, summaryWorksheet, "Workshop Summary");
+    
+    XLSX.writeFile(workbook, `invente25-workshops-detailed-${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
   const handleExportHackathonMain = () => {
@@ -1998,10 +2032,10 @@ export default function AnalyticsPage() {
   const handleExportParticipants = (scope, data) => {
     if (!data) return;
 
-    const { participants = [], hackathon_participants = [] } = data;
+    const { participants = [], workshop_participants = [], hackathon_participants = [] } = data;
     
-    // Only proceed if we have either regular participants or hackathon participants
-    if (participants.length === 0 && hackathon_participants.length === 0) {
+    // Only proceed if we have participants
+    if (participants.length === 0 && workshop_participants.length === 0 && hackathon_participants.length === 0) {
       alert('No participants to export');
       return;
     }
@@ -2015,16 +2049,36 @@ export default function AnalyticsPage() {
         'Email': p.user_email,
         'Phone': p.phone,
         'Institution': p.institution,
-        'Payment Method': p.payment_method,
-        'Event Name': p.event_name || 'N/A',
-        'Event Type': p.event_type || 'N/A',
-        'Department': p.department_name || 'N/A',
-        'Attended': p.attended || p.attended_this_event ? 'Yes' : 'No',
-        'Registration Date': new Date(p.registration_date).toLocaleDateString()
+        'Total Passes': p.total_passes,
+        'Registered Events': p.registered_events || 'N/A',
+        'Total Registrations': p.total_registrations,
+        'Attended Events': p.attended_count,
+        'Attendance Status': `${p.attended_count}/${p.total_registrations} events`,
+        'Overall Attended': p.attended_any_event ? 'Yes' : 'No',
+        'First Registration Date': new Date(p.first_registration_date).toLocaleDateString()
       }));
 
       const worksheet = XLSX.utils.json_to_sheet(mainData);
       XLSX.utils.book_append_sheet(workbook, worksheet, "Participants");
+    }
+
+    // Add workshop participants sheet if available
+    if (workshop_participants.length > 0) {
+      const workshopData = workshop_participants.map(w => ({
+        'Name': w.name,
+        'Email': w.user_email,
+        'Phone': w.phone,
+        'Institution': w.institution,
+        'Payment Method': w.payment_method,
+        'Workshop Name': w.event_name || 'N/A',
+        'Event Type': 'Workshop',
+        'Department': w.department_name || 'WORKSHOP',
+        'Attended': w.attended ? 'Yes' : 'No',
+        'Registration Date': new Date(w.registration_date).toLocaleDateString()
+      }));
+
+      const workshopWorksheet = XLSX.utils.json_to_sheet(workshopData);
+      XLSX.utils.book_append_sheet(workbook, workshopWorksheet, "Workshop Participants");
     }
 
     // Add hackathon participants sheet if available
@@ -2334,12 +2388,7 @@ export default function AnalyticsPage() {
             >
               Export Non-Tech
             </button>
-            <button
-              onClick={handleExportWorkshop}
-              className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs"
-            >
-              Export Workshops
-            </button>
+
             <button
               onClick={handleExportHackathonMain}
               className="px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-xs"
@@ -2383,6 +2432,9 @@ export default function AnalyticsPage() {
               </div>
               <div className="text-lg font-semibold text-blue-500 mt-1">
                 {formatCurrency(c.totals.tech_revenue)}
+              </div>
+              <div className="text-sm text-blue-600 mt-1">
+                {fmt(c.totals.tech_passes_count || 0)} passes
               </div>
               <div className="text-xs text-gray-500 mt-1">
                 Online: {(() => {
@@ -2438,18 +2490,6 @@ export default function AnalyticsPage() {
                   const techOnlineData = c.attendance_by_payment_type?.find(p => p.event_type === 'technical' && p.method === 'online');
                   if (!techOnlineData || techOnlineData.total_registrations === 0) return '0%';
                   return `${Math.round((techOnlineData.attended_count / techOnlineData.total_registrations) * 100)}%`;
-                })()}
-              </div>
-            </div>
-            
-            {/* Non-Tech Online Attendance % */}
-            <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="text-sm text-gray-500 mb-1">Non-Tech - Online Attendance %</div>
-              <div className="text-xl font-bold text-green-600">
-                {(() => {
-                  const nontechOnlineData = c.attendance_by_payment_type?.find(p => p.event_type === 'non-technical' && p.method === 'online');
-                  if (!nontechOnlineData || nontechOnlineData.total_registrations === 0) return '0%';
-                  return `${Math.round((nontechOnlineData.attended_count / nontechOnlineData.total_registrations) * 100)}%`;
                 })()}
               </div>
             </div>
@@ -2582,7 +2622,7 @@ export default function AnalyticsPage() {
             <div className="p-6 border-b">
               <h3 className="text-lg font-semibold">Department Performance</h3>
               <p className="text-sm text-gray-600 mt-1">
-                Click a department row for a detailed breakdown.
+                Click a department row for a detailed breakdown. Revenue shown is from non-technical events only.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -2602,7 +2642,7 @@ export default function AnalyticsPage() {
                       Attendance
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Revenue
+                      Non-Technical Revenue
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Rate
@@ -2658,11 +2698,19 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border">
-            <div className="p-6 border-b">
-              <h3 className="text-lg font-semibold">Workshop Performance</h3>
-              <div className="text-sm text-gray-600 mt-1">
-                Detailed workshop analytics
+            <div className="p-6 border-b flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold">Workshop Performance</h3>
+                <div className="text-sm text-gray-600 mt-1">
+                  Detailed workshop analytics
+                </div>
               </div>
+              <button
+                onClick={handleExportWorkshop}
+                className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm"
+              >
+                Export Workshops
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
