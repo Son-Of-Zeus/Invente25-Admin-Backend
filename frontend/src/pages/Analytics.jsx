@@ -1943,7 +1943,9 @@ export default function AnalyticsPage() {
                vol.department_name ? 'Department Volunteer' : 'Central Volunteer',
         'Department': vol.department_name || 'Central',
         'Passes Assigned': vol.passes_assigned,
-        'Revenue Collected': vol.total_collected,
+        'Revenue via UPI': vol.upi_collected,
+        'Revenue via Cash': vol.cash_collected,
+        'Total Revenue': vol.total_collected,
       }));
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
@@ -3099,7 +3101,10 @@ export default function AnalyticsPage() {
                       Passes Assigned
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Revenue Collected
+                      Revenue via UPI
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Revenue via Cash
                     </th>
                   </tr>
                 </thead>
@@ -3135,7 +3140,10 @@ export default function AnalyticsPage() {
                           {fmt(vol.passes_assigned)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
-                          {formatCurrency(vol.total_collected)}
+                          {formatCurrency(vol.upi_collected)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {formatCurrency(vol.cash_collected)}
                         </td>
                       </tr>
                     ))}
