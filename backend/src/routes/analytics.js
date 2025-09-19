@@ -118,6 +118,8 @@ router.get(
           online_registered: onlineVsAttended.online_registered || 0,
           actually_attended: onlineVsAttended.actually_attended || 0,
           online_and_attended: onlineVsAttended.online_and_attended || 0,
+          online_percentage: totals.registrations > 0 ? 
+            ((onlineVsAttended.online_registered / totals.registrations) * 100).toFixed(1) : "0.0",
         },
         registrations: registrations, // --- RESPONSE KEY UPDATED ---
         event_admins: eventAdmins,
@@ -536,6 +538,31 @@ router.get(
         }
       });
 
+      // Department staff and revenue analytics (volunteers + dept_admin for this department)
+      const departmentStaff = (
+        await db.query(`
+          SELECT
+            ap.name,
+            ap.personal_email,
+            ap.phone,
+            a.role,
+            d.name as department_name,
+            COUNT(p.pass_id)::int AS passes_assigned,
+            COALESCE(SUM(CASE WHEN r.method = 'upi' THEN r.amount ELSE 0 END), 0)::decimal AS upi_collected,
+            COALESCE(SUM(CASE WHEN r.method = 'cash' THEN r.amount ELSE 0 END), 0)::decimal AS cash_collected,
+            COALESCE(SUM(r.amount), 0)::decimal AS total_collected
+          FROM admin_profiles ap
+          LEFT JOIN admins a ON ap.admin_email = a.email
+          LEFT JOIN departments d ON a.department_id = d.id
+          LEFT JOIN passes p ON ap.personal_email = p.assigned_by
+          LEFT JOIN receipts r ON p.payment_id = r.payment_id
+          WHERE a.role IN ('volunteer', 'dept_admin') 
+            AND a.department_id = $1
+          GROUP BY ap.personal_email, ap.name, ap.phone, a.role, d.name
+          ORDER BY total_collected DESC
+        `, [deptId])
+      ).rows;
+
       const responseData = {
         department: deptRow,
         totals: {
@@ -563,7 +590,8 @@ router.get(
           attended_count: parseInt(row.attended_count),
           online_percentage: row.total_registered > 0 ? 
             ((row.online_registered / row.total_registered) * 100).toFixed(1) : "0.0"
-        }))
+        })),
+        department_staff: departmentStaff
       };
 
       // Add hackathon data to response if ECE department
