@@ -4,4 +4,4 @@
 
 -- Add workshop_volunteer role (can handle workshop volunteer tasks)
 INSERT INTO admins (email, password_hash, role, department_id)
-VALUES ('workshop_volunteer@invente.local', crypt('${WORKSHOP_VOLUNTEER_PASSWORD}', gen_salt('bf')), 'workshop_volunteer', 11);
+VALUES ('workshop_volunteer@invente.local', crypt('S7r%4ZkG9qJt', gen_salt('bf')), 'workshop_volunteer', 11);

@@ -125,10 +125,7 @@ class MigrationRunner {
       // Read migration SQL
       let sql = fs.readFileSync(migration.filepath, 'utf8');
       
-      // Substitute environment variables
-      sql = this.substituteEnvironmentVariables(sql);
-      
-      // Execute migration SQL
+      // Execute migration SQL (no environment variable substitution needed for hardcoded passwords)
       await client.query(sql);
       
       // Record migration as applied
@@ -159,6 +156,7 @@ class MigrationRunner {
       return value;
     });
   }
+
 }
 
 module.exports = MigrationRunner;
