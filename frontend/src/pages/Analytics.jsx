@@ -433,12 +433,14 @@ function DepartmentViewContent({
   const [activeTab, setActiveTab] = useState("department");
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [trackFilter, setTrackFilter] = useState("");
+  const [selectedStaff, setSelectedStaff] = useState(null);
   
   // Check if hackathon data is available (ECE department)
   const hasHackathonData = d.hackathons && d.hackathons.track_breakdown;
   
   const tabs = [
     { id: "department", label: "Department Analytics", icon: "🏢" },
+    { id: "staff", label: "Staff & Revenue", icon: "👥" },
   ];
   
   if (hasHackathonData) {
@@ -523,8 +525,35 @@ function DepartmentViewContent({
     }
   };
 
+  // Export handler for department staff
+  const handleExportDepartmentStaff = () => {
+    if (!d?.department_staff) return;
+    const dataToExport = d.department_staff.map(staff => ({
+      'Staff Name': staff.name,
+      'Email': staff.personal_email,
+      'Phone': staff.phone,
+      'Role': staff.role === 'dept_admin' ? 'Department Admin' : 'Department Volunteer',
+      'Department': staff.department_name || 'Central',
+      'Passes Assigned': staff.passes_assigned,
+      'Revenue via UPI': staff.upi_collected,
+      'Revenue via Cash': staff.cash_collected,
+      'Total Revenue': staff.total_collected,
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Department Staff Revenue");
+    XLSX.writeFile(workbook, `invente25-department-staff-revenue-${d.department?.name}-${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
   return (
     <>
+      {selectedStaff && (
+        <VolunteerDetailModal
+          volunteer={selectedStaff}
+          onClose={() => setSelectedStaff(null)}
+        />
+      )}
+      
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">
           Department Analytics — {d.department?.name}
@@ -534,8 +563,8 @@ function DepartmentViewContent({
         </div>
       </div>
 
-      {/* Tabs - only show if there are multiple tabs */}
-      {hasHackathonData && (
+      {/* Tabs - show if there are multiple tabs or staff data */}
+      {(hasHackathonData || (d.department_staff && d.department_staff.length > 0)) && (
         <div className="mb-6">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
@@ -820,6 +849,101 @@ function DepartmentViewContent({
           </table>
         </div>
       </div>
+        </>
+      )}
+
+      {/* Staff & Revenue Tab */}
+      {activeTab === "staff" && (
+        <>
+          {/* Staff & Revenue Section */}
+          {d.department_staff && d.department_staff.length > 0 ? (
+            <div className="bg-white rounded-lg shadow-sm border">
+              <div className="p-6 border-b flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-semibold">Staff & Revenue Performance</h3>
+                  <div className="text-sm text-gray-600 mt-1">Pass assignments and revenue collected by department staff.</div>
+                </div>
+                <button
+                  onClick={handleExportDepartmentStaff}
+                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                >
+                  Export Table
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Staff Member
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Role
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Passes Assigned
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Revenue via UPI
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Revenue via Cash
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Total Revenue
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {d.department_staff.map((staff) => (
+                      <tr 
+                        key={staff.personal_email} 
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => setSelectedStaff(staff)}
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {staff.name}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {staff.personal_email}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            staff.role === 'dept_admin' 
+                              ? 'bg-purple-100 text-purple-800' 
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {staff.role === 'dept_admin' ? 'Department Admin' : 'Volunteer'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {fmt(staff.passes_assigned)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {formatCurrency(staff.upi_collected)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {formatCurrency(staff.cash_collected)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {formatCurrency(staff.total_revenue)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm border p-8 text-center">
+              <div className="text-gray-500">
+                <div className="text-lg font-medium mb-2">No Staff Data Available</div>
+                <div className="text-sm">Staff and revenue information will appear here once data is available.</div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -1365,6 +1489,9 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Debug: Log the data structure
+  console.log('WorkshopViewContent received data:', data);
+
   // Fetch workshop events for event-level analytics
   useEffect(() => {
     const fetchWorkshopEvents = async () => {
@@ -1392,6 +1519,17 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
     }
   };
 
+  // Show loading or error states
+  if (!data) {
+    return (
+      <div className="p-6">
+        <div className="text-center">
+          <div className="text-gray-500">Loading workshop analytics...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       {selectedEvent && (
@@ -1411,25 +1549,25 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="text-sm text-gray-500 mb-1">Total Workshops</div>
           <div className="text-2xl font-bold text-blue-600">
-            {fmt(Array.isArray(data) ? data.length : 0)}
+            {fmt(data?.summary?.total_workshops || 0)}
           </div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="text-sm text-gray-500 mb-1">Total Registrations</div>
           <div className="text-2xl font-bold text-green-600">
-            {fmt(Array.isArray(data) ? data.reduce((sum, w) => sum + (w.registrations || 0), 0) : 0)}
+            {fmt(data?.summary?.total_registrations || 0)}
           </div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="text-sm text-gray-500 mb-1">Total Attendance</div>
           <div className="text-2xl font-bold text-purple-600">
-            {fmt(Array.isArray(data) ? data.reduce((sum, w) => sum + (w.attendance || 0), 0) : 0)}
+            {fmt(data?.summary?.total_attendance || 0)}
           </div>
         </div>
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="text-sm text-gray-500 mb-1">Total Revenue</div>
           <div className="text-2xl font-bold text-orange-600">
-            {formatCurrency(Array.isArray(data) ? data.reduce((sum, w) => sum + (w.revenue || 0), 0) : 0)}
+            {formatCurrency(data?.summary?.total_revenue || 0)}
           </div>
         </div>
       </div>
@@ -1464,7 +1602,7 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {Array.isArray(data) && data.map((workshop) => {
+              {data?.workshops && Array.isArray(data.workshops) && data.workshops.map((workshop) => {
                 const attendanceRate = workshop.registrations > 0 
                   ? ((workshop.attendance / workshop.registrations) * 100).toFixed(1)
                   : '0.0';
@@ -1510,7 +1648,7 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
                   </tr>
                 );
               })}
-              {!Array.isArray(data) && (
+              {(!data?.workshops || !Array.isArray(data.workshops) || data.workshops.length === 0) && (
                 <tr>
                   <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
                     No workshop data available
@@ -1526,7 +1664,7 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
       <div className="mt-8 bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold mb-4">Workshop Revenue Distribution</h2>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={Array.isArray(data) ? data : []}>
+          <BarChart data={data?.workshops && Array.isArray(data.workshops) ? data.workshops : []}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis 
               dataKey="event_name" 
@@ -1784,6 +1922,7 @@ export default function AnalyticsPage() {
         setStats({ scope: "department", data: resp.data });
       } else if (user?.role === "workshop_admin") {
         const resp = await authAxios.get("/analytics/workshops");
+        console.log('Workshop admin received data:', resp.data);
         setStats({ scope: "workshop", data: resp.data });
       } else {
         const resp = await authAxios.get("/analytics/college");
@@ -2239,25 +2378,32 @@ export default function AnalyticsPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {d.recent_slots.map((r) => (
-                  <tr
-                    key={`${r.pass_id}-${r.slot_no}`}
-                    className="hover:bg-gray-50"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {r.pass_id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {r.slot_no}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {r.attended ? "Yes" : "No"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(r.created_at).toLocaleString()}
+                {(d.registrations && d.registrations.length > 0) ? 
+                  d.registrations.map((r) => (
+                    <tr
+                      key={`${r.pass_id}-${r.slot_no}`}
+                      className="hover:bg-gray-50"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {r.pass_id}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {r.slot_no}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {r.attended ? "Yes" : "No"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(r.created_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  )) :
+                  <tr>
+                    <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
+                      No registrations found for this event
                     </td>
                   </tr>
-                ))}
+                }
               </tbody>
             </table>
           </div>
