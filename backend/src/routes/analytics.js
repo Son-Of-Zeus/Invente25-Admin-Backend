@@ -1834,11 +1834,32 @@ router.get(
 );
 
 // Get detailed pass registration data for a single volunteer
-router.get('/volunteer/:email', authMiddleware, requireRole(['super_admin', 'master_admin']), async (req, res) => {
+router.get('/volunteer/:email', authMiddleware, requireRole(['super_admin', 'master_admin', 'dept_admin']), async (req, res) => {
   try {
     const volunteerEmail = req.params.email;
     if (!volunteerEmail) {
       return res.status(400).json({ error: 'Volunteer email is required' });
+    }
+
+    // For department admins, check if the volunteer belongs to their department
+    if (req.admin.role === 'dept_admin') {
+      const adminDeptId = req.admin.department_id;
+      if (!adminDeptId) {
+        return res.status(403).json({ error: 'Department admin profile incomplete' });
+      }
+      
+      // Check if the volunteer belongs to the same department using the same logic as department staff query
+      const volunteerCheck = await db.query(`
+        SELECT 1 FROM admin_profiles ap
+        LEFT JOIN admins a ON ap.admin_email = a.email
+        WHERE ap.personal_email = $1 
+        AND a.role IN ('volunteer', 'dept_admin')
+        AND a.department_id = $2
+      `, [volunteerEmail, adminDeptId]);
+      
+      if (!volunteerCheck.rows.length) {
+        return res.status(403).json({ error: 'You can only view staff members from your department' });
+      }
     }
 
     const query = `

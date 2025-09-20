@@ -10,45 +10,8 @@ require('dotenv').config();
 const JWT_SECRET = process.env.JWT_SECRET || 'plisreplaceinprod';
 const MAIL_SERVICE_URL = process.env.MAIL_SERVICE_URL || '';
 
-// Department admin email restrictions
-const DEPT_ADMIN_ALLOWED_EMAILS = {
-  'CSE_SSN': [
-    'srihari2210434@ssn.edu.in',
-    'prathiyangira2210597@ssn.edu.in',
-    'kowshika2210370@ssn.edu.in'
-  ],
-  'CSE_SNU': [
-    'meenakshi23110250@snuchennai.edu.in'
-  ],
-  'IT': [
-    'singaram2210488@ssn.edu.in',
-    'srinivas2210575@ssn.edu.in'
-  ],
-  'ECE': [
-    'mukkesh2310746@ssn.edu.in'
-  ],
-  'EEE': [
-    'varsha2310260@ssn.edu.in'
-  ],
-  'CHEM': [
-    'nakulasri2210859@ssn.edu.in'
-  ],
-  'MECH': [
-    'sitaraman2210435@ssn.edu.in'
-  ],
-  'CIVIL': [
-    'deepak2210926@ssn.edu.in',
-    'sindhuja2210865@ssn.edu.in',
-    'ehalwaarkuzhali2210938@ssn.edu.in'
-  ],
-  'BME': [
-    'vidya2210165@ssn.edu.in'
-  ],
-  'COM': [
-    'oveya24310082@snuchennai.edu.in'
-  ]
-  // WORKSHOP has no restrictions as per requirement
-};
+// Department admin email restrictions - loaded from configuration file
+const DEPT_ADMIN_ALLOWED_EMAILS = require('../config/departmentAdminEmails.json');
 
 // Function to validate department admin email restrictions
 function isEmailAllowedForDepartment(email, department, role) {
