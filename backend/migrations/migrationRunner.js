@@ -3,6 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../src/db');
 
+// Load environment variables
+require('dotenv').config();
+
 class MigrationRunner {
   constructor() {
     this.migrationsDir = __dirname;
@@ -119,8 +122,13 @@ class MigrationRunner {
     try {
       await client.query('BEGIN');
       
-      // Read and execute migration SQL
-      const sql = fs.readFileSync(migration.filepath, 'utf8');
+      // Read migration SQL
+      let sql = fs.readFileSync(migration.filepath, 'utf8');
+      
+      // Substitute environment variables
+      sql = this.substituteEnvironmentVariables(sql);
+      
+      // Execute migration SQL
       await client.query(sql);
       
       // Record migration as applied
@@ -139,6 +147,17 @@ class MigrationRunner {
     } finally {
       client.release();
     }
+  }
+
+  substituteEnvironmentVariables(sql) {
+    // Replace ${VARIABLE_NAME} with process.env.VARIABLE_NAME
+    return sql.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+      const value = process.env[varName];
+      if (value === undefined) {
+        throw new Error(`Environment variable ${varName} is not defined`);
+      }
+      return value;
+    });
   }
 }
 
