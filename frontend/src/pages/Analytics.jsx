@@ -532,7 +532,9 @@ function DepartmentViewContent({
       'Staff Name': staff.name,
       'Email': staff.personal_email,
       'Phone': staff.phone,
-      'Role': staff.role === 'dept_admin' ? 'Department Admin' : 'Department Volunteer',
+      'Role': staff.role === 'dept_admin' ? 'Department Admin' :
+              staff.role === 'workshop_admin' ? 'Workshop Admin' :
+              staff.role === 'workshop_volunteer' ? 'Workshop Volunteer' : 'Department Volunteer',
       'Department': staff.department_name || 'Central',
       'Passes Assigned': staff.passes_assigned,
       'Revenue via UPI': staff.upi_collected,
@@ -915,7 +917,9 @@ function DepartmentViewContent({
                               ? 'bg-purple-100 text-purple-800' 
                               : 'bg-blue-100 text-blue-800'
                           }`}>
-                            {staff.role === 'dept_admin' ? 'Department Admin' : 'Volunteer'}
+                            {staff.role === 'dept_admin' ? 'Department Admin' :
+                             staff.role === 'workshop_admin' ? 'Workshop Admin' :
+                             staff.role === 'workshop_volunteer' ? 'Workshop Volunteer' : 'Volunteer'}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
@@ -2078,7 +2082,10 @@ export default function AnalyticsPage() {
         'Staff Name': vol.name,
         'Email': vol.personal_email,
         'Phone': vol.phone,
-        'Role': vol.role === 'dept_admin' ? 'Department Admin' : 
+        'Role': vol.role === 'dept_admin' ? 'Department Admin' :
+               vol.role === 'master_admin' ? 'Master Admin' :
+               vol.role === 'workshop_admin' ? 'Workshop Admin' :
+               vol.role === 'workshop_volunteer' ? 'Workshop Volunteer' :
                vol.department_name ? 'Department Volunteer' : 'Central Volunteer',
         'Department': vol.department_name || 'Central',
         'Passes Assigned': vol.passes_assigned,
@@ -3273,7 +3280,10 @@ export default function AnalyticsPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">
-                            {vol.role === 'dept_admin' ? 'Department Admin' : 
+                            {vol.role === 'dept_admin' ? 'Department Admin' :
+                             vol.role === 'master_admin' ? 'Master Admin' :
+                             vol.role === 'workshop_admin' ? 'Workshop Admin' :
+                             vol.role === 'workshop_volunteer' ? 'Workshop Volunteer' :
                              vol.department_name ? 'Department Volunteer' : 'Central Volunteer'}
                           </div>
                           {vol.department_name && (

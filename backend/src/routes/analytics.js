@@ -538,7 +538,7 @@ router.get(
         }
       });
 
-      // Department staff and revenue analytics (volunteers + dept_admin for this department)
+      // Department staff and revenue analytics (volunteers + dept_admin + workshop staff for this department)
       const departmentStaff = (
         await db.query(`
           SELECT
@@ -556,7 +556,7 @@ router.get(
           LEFT JOIN departments d ON a.department_id = d.id
           LEFT JOIN passes p ON ap.personal_email = p.assigned_by
           LEFT JOIN receipts r ON p.payment_id = r.payment_id
-          WHERE a.role IN ('volunteer', 'dept_admin') 
+          WHERE a.role IN ('volunteer', 'dept_admin', 'workshop_admin', 'workshop_volunteer') 
             AND a.department_id = $1
           GROUP BY ap.personal_email, ap.name, ap.phone, a.role, d.name
           ORDER BY total_collected DESC
@@ -1124,7 +1124,7 @@ router.get(
               LEFT JOIN departments d ON a.department_id = d.id
               LEFT JOIN passes p ON ap.personal_email = p.assigned_by
               LEFT JOIN receipts r ON p.payment_id = r.payment_id
-              WHERE a.role IN ('volunteer', 'dept_admin')
+              WHERE a.role IN ('volunteer', 'dept_admin', 'master_admin', 'workshop_admin', 'workshop_volunteer')
               GROUP BY ap.personal_email, ap.name, ap.phone, a.role, d.name
              ORDER BY total_collected DESC
            `)
@@ -1842,8 +1842,8 @@ router.get('/volunteer/:email', authMiddleware, requireRole(['super_admin', 'mas
     }
 
     // For department admins, check if the volunteer belongs to their department
-    if (req.admin.role === 'dept_admin') {
-      const adminDeptId = req.admin.department_id;
+    if (req.user.role === 'dept_admin') {
+      const adminDeptId = req.user.department_id;
       if (!adminDeptId) {
         return res.status(403).json({ error: 'Department admin profile incomplete' });
       }
@@ -1853,7 +1853,7 @@ router.get('/volunteer/:email', authMiddleware, requireRole(['super_admin', 'mas
         SELECT 1 FROM admin_profiles ap
         LEFT JOIN admins a ON ap.admin_email = a.email
         WHERE ap.personal_email = $1 
-        AND a.role IN ('volunteer', 'dept_admin')
+        AND a.role IN ('volunteer', 'dept_admin', 'workshop_admin', 'workshop_volunteer')
         AND a.department_id = $2
       `, [volunteerEmail, adminDeptId]);
       
