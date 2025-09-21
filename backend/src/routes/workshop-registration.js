@@ -10,7 +10,7 @@ const router = express.Router();
 
 router.post('/', 
   authMiddleware, 
-  requireRole(['volunteer', 'super_admin', 'master_admin', 'workshop_admin']),
+  requireRole(['volunteer', 'super_admin', 'master_admin', 'workshop_admin', 'workshop_volunteer']),
   async (req, res) => {
     const { emailID, name, phoneNumber, institution, paymentMethod, workshops } = req.body;
 

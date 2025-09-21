@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Card from "../components/Card";
 import { useAuth } from "../hooks/useAuth";
 import {
@@ -14,11 +14,39 @@ import {
 export default function Home() {
   const { user, authAxios } = useAuth();
   const role = user?.role || null;
+  const [eventAdminHasTechEvent, setEventAdminHasTechEvent] = useState(true); // Default to true to show scan initially
+
+  // Fetch event details for event_admin users to determine if they should see scan option
+  useEffect(() => {
+    const checkEventType = async () => {
+      if (user?.role === 'event_admin' && user?.event_id) {
+        try {
+          const response = await authAxios.get('/events');
+          const events = response.data.rows || [];
+          const userEvent = events.find(event => event.external_id === user.event_id);
+          if (userEvent) {
+            setEventAdminHasTechEvent(userEvent.event_type === 'technical');
+          }
+        } catch (error) {
+          console.error('Failed to fetch event details:', error);
+          // On error, default to true to avoid breaking existing functionality
+          setEventAdminHasTechEvent(true);
+        }
+      }
+    };
+
+    checkEventType();
+  }, [user, authAxios]);
 
   // Define roles to avoid repetition
   const registrationRoles = ["volunteer", "super_admin"];
   const adminRoles = ["dept_admin", "super_admin"];
-  const scanRoles = ["volunteer", "dept_admin", "event_admin", "super_admin"];
+  
+  // Conditionally include event_admin in scan roles based on their event type
+  const baseScanRoles = ["volunteer", "dept_admin", "super_admin"];
+  const scanRoles = user?.role === 'event_admin' 
+    ? (eventAdminHasTechEvent ? [...baseScanRoles, "event_admin"] : baseScanRoles)
+    : [...baseScanRoles, "event_admin"];
 
   // Add an `icon` property to each card
   const cards = [
@@ -54,7 +82,7 @@ export default function Home() {
       title: "Workshop Registration",
       desc: "Register participants for workshops.",
       to: "/workshop-registration",
-      roles: ["master_admin", "workshop_admin", ...registrationRoles],
+      roles: ["master_admin", "workshop_admin", "workshop_volunteer", ...registrationRoles],
       icon: WrenchScrewdriverIcon,
     },
     {
@@ -88,6 +116,18 @@ export default function Home() {
         <p className="mt-2 text-base text-gray-600">
           Select an action from the dashboard below to get started.
         </p>
+        
+        {/* Support Contacts */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <p className="text-sm font-medium text-gray-700 mb-2">
+            Need help? Contact support:
+          </p>
+          <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+            <span>📞 +91 86104 14291 - Shaun</span>
+            <span>📞 9655871195 - Irfan</span>
+            <span>📞 +91 82202 89166 - Sai Pranav</span>
+          </div>
+        </div>
       </div>
 
       {/* Card Grid */}

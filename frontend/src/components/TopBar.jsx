@@ -1,11 +1,17 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+
+import React, { useState, useEffect } from "react";
+import { NavLink as RouterNavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
+import {
+  Bars3Icon,
+  XMarkIcon,
+  ChevronDownIcon,
+} from "@heroicons/react/24/outline";
 import inventeLogo from "../assets/invente.png";
 
 // A small helper component to avoid repeating the role check logic
-const NavLink = ({ to, requiredRoles, user, children, className = "" }) => {
+
+const NavLink = ({ to, children, requiredRoles = [], user, className = "" }) => {
   // Show the link if no specific roles are required, or if the user has one of the required roles.
   const isVisible = !requiredRoles || (user && requiredRoles.includes(user.role));
 
@@ -21,9 +27,32 @@ const NavLink = ({ to, requiredRoles, user, children, className = "" }) => {
 };
 
 export default function TopBar() {
-  const { user, logout } = useAuth();
+  const { user, logout, authAxios } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [eventAdminHasTechEvent, setEventAdminHasTechEvent] = useState(true); // Default to true to show scan initially
+
+  // Fetch event details for event_admin users to determine if they should see scan option
+  useEffect(() => {
+    const checkEventType = async () => {
+      if (user?.role === 'event_admin' && user?.event_id) {
+        try {
+          const response = await authAxios.get('/events');
+          const events = response.data.rows || [];
+          const userEvent = events.find(event => event.external_id === user.event_id);
+          if (userEvent) {
+            setEventAdminHasTechEvent(userEvent.event_type === 'technical');
+          }
+        } catch (error) {
+          console.error('Failed to fetch event details:', error);
+          // On error, default to true to avoid breaking existing functionality
+          setEventAdminHasTechEvent(true);
+        }
+      }
+    };
+
+    checkEventType();
+  }, [user, authAxios]);
 
   const handleLogout = () => {
     logout();
@@ -32,11 +61,16 @@ export default function TopBar() {
 
   // Define roles for clarity and to reduce repetition
   const registrationRoles = ["volunteer", "super_admin", "master_admin"];
-  const workshopRegistrationRoles = ["volunteer", "super_admin", "master_admin", "workshop_admin"];
+  const workshopRegistrationRoles = ["volunteer", "super_admin", "master_admin", "workshop_admin", "workshop_volunteer"];
   const nonTechRegistrationRoles = ["volunteer", "super_admin", "master_admin", "dept_admin"];
   const attendanceRoles = ["event_admin", "super_admin", "master_admin"];
   const analyticsRoles = ["event_admin", "dept_admin", "super_admin", "master_admin", "workshop_admin"];
-  const scanRoles = ["volunteer", "dept_admin", "event_admin", "super_admin", "master_admin"];
+  
+  // Conditionally include event_admin in scan roles based on their event type
+  const baseScanRoles = ["volunteer", "dept_admin", "super_admin", "master_admin"];
+  const scanRoles = user?.role === 'event_admin' 
+    ? (eventAdminHasTechEvent ? [...baseScanRoles, "event_admin"] : baseScanRoles)
+    : [...baseScanRoles, "event_admin"];
 
   // The navigation links are defined once and reused for both desktop and mobile views
   const navLinks = (

@@ -1489,12 +1489,39 @@ function AllEventsTable({ onEventClick }) {
 
 // Workshop view component for workshop_admin
 function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selectedEvent, setSelectedEvent }) {
+  const [activeTab, setActiveTab] = useState("workshops");
   const [workshopEvents, setWorkshopEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedStaff, setSelectedStaff] = useState(null);
 
   // Debug: Log the data structure
   console.log('WorkshopViewContent received data:', data);
+
+  const tabs = [
+    { id: "workshops", label: "Workshop Analytics", icon: "🔧" },
+    { id: "staff", label: "Staff & Revenue", icon: "👥" },
+  ];
+
+  // Export handler for workshop staff
+  const handleWorkshopStaffExport = () => {
+    if (!data?.workshop_staff) return;
+    const dataToExport = data.workshop_staff.map(staff => ({
+      'Staff Name': staff.name,
+      'Email': staff.personal_email,
+      'Phone': staff.phone,
+      'Role': staff.role === 'workshop_admin' ? 'Workshop Admin' : 'Workshop Volunteer',
+      'Department': staff.department_name || 'Workshop',
+      'Passes Assigned': staff.passes_assigned,
+      'Revenue via UPI': staff.upi_collected,
+      'Revenue via Cash': staff.cash_collected,
+      'Total Revenue': staff.total_collected,
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Workshop Staff Revenue");
+    XLSX.writeFile(workbook, `invente-workshop-staff-revenue-${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
 
   // Fetch workshop events for event-level analytics
   useEffect(() => {
@@ -1542,14 +1569,43 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
           onClose={() => setSelectedEvent(null)}
         />
       )}
+      {selectedStaff && (
+        <VolunteerDetailModal
+          volunteer={selectedStaff}
+          onClose={() => setSelectedStaff(null)}
+        />
+      )}
       
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">Workshop Analytics</h1>
         <p className="text-gray-600">Last updated: {refreshTime.toLocaleTimeString()}</p>
       </div>
 
-      {/* Workshop Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex space-x-8">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === tab.id
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <span className="mr-2">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === "workshops" && (
+        <div className="space-y-6">
+          {/* Workshop Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="text-sm text-gray-500 mb-1">Total Workshops</div>
           <div className="text-2xl font-bold text-blue-600">
@@ -1664,24 +1720,106 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
         </div>
       </div>
 
-      {/* Chart Section */}
-      <div className="mt-8 bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">Workshop Revenue Distribution</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={data?.workshops && Array.isArray(data.workshops) ? data.workshops : []}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis 
-              dataKey="event_name" 
-              angle={-45}
-              textAnchor="end"
-              height={100}
-            />
-            <YAxis />
-            <Tooltip formatter={(value) => formatCurrency(value)} />
-            <Bar dataKey="revenue" fill="#3B82F6" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+          {/* Chart Section */}
+          <div className="mt-8 bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold mb-4">Workshop Revenue Distribution</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={data?.workshops && Array.isArray(data.workshops) ? data.workshops : []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="event_name" 
+                  angle={-45}
+                  textAnchor="end"
+                  height={100}
+                />
+                <YAxis />
+                <Tooltip formatter={(value) => formatCurrency(value)} />
+                <Bar dataKey="revenue" fill="#3B82F6" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "staff" && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow-sm border">
+            <div className="p-6 border-b flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold">Workshop Staff & Revenue Performance</h3>
+                <div className="text-sm text-gray-600 mt-1">Pass assignments and revenue collected by workshop staff.</div>
+              </div>
+              <button
+                onClick={handleWorkshopStaffExport}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+              >
+                Export Table
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Staff Member
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Role & Department
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Passes Assigned
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Revenue via UPI
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Revenue via Cash
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data?.workshop_staff &&
+                    data.workshop_staff.map((staff) => (
+                      <tr
+                        key={staff.personal_email}
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => setSelectedStaff(staff)}
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {staff.name}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {staff.personal_email} | {staff.phone || "No Phone"}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {staff.role === 'workshop_admin' ? 'Workshop Admin' : 'Workshop Volunteer'}
+                          </div>
+                          {staff.department_name && (
+                            <div className="text-sm text-gray-500">
+                              {staff.department_name}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {fmt(staff.passes_assigned)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {formatCurrency(staff.upi_collected)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {formatCurrency(staff.cash_collected)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1757,7 +1895,7 @@ function ParticipantListModal({
           </div>
           
           {/* Filters */}
-          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className={`mt-4 grid grid-cols-2 gap-4 ${scope === 'event' ? 'md:grid-cols-3' : 'md:grid-cols-4'}`}>
             <select
               value={filters.payment_method}
               onChange={(e) => onFilterChange('payment_method', e.target.value)}
@@ -1776,17 +1914,19 @@ function ParticipantListModal({
               <option value="true">Attended</option>
               <option value="false">Not Attended</option>
             </select>
-            <select
-              value={filters.event_type}
-              onChange={(e) => onFilterChange('event_type', e.target.value)}
-              className="border rounded px-3 py-2 text-sm"
-            >
-              <option value="">All Event Types</option>
-              <option value="technical">Technical</option>
-              <option value="non-technical">Non-Technical</option>
-              <option value="hackathon">Hackathon</option>
-              <option value="workshop">Workshop</option>
-            </select>
+            {scope !== 'event' && (
+              <select
+                value={filters.event_type}
+                onChange={(e) => onFilterChange('event_type', e.target.value)}
+                className="border rounded px-3 py-2 text-sm"
+              >
+                <option value="">All Event Types</option>
+                <option value="technical">Technical</option>
+                <option value="non-technical">Non-Technical</option>
+                <option value="hackathon">Hackathon</option>
+                <option value="workshop">Workshop</option>
+              </select>
+            )}
             {scope === 'college' && (
               <select
                 value={filters.department_id}
@@ -2192,19 +2332,36 @@ export default function AnalyticsPage() {
     
     // Add regular participants sheet if available
     if (participants.length > 0) {
-      const mainData = participants.map(p => ({
-        'Name': p.name,
-        'Email': p.user_email,
-        'Phone': p.phone,
-        'Institution': p.institution,
-        'Total Passes': p.total_passes,
-        'Registered Events': p.registered_events || 'N/A',
-        'Total Registrations': p.total_registrations,
-        'Attended Events': p.attended_count,
-        'Attendance Status': `${p.attended_count}/${p.total_registrations} events`,
-        'Overall Attended': p.attended_any_event ? 'Yes' : 'No',
-        'First Registration Date': new Date(p.first_registration_date).toLocaleDateString()
-      }));
+      let mainData;
+      
+      if (scope === 'event') {
+        // Event admin export - simplified columns relevant to single event
+        mainData = participants.map(p => ({
+          'Name': p.name,
+          'Email': p.user_email,
+          'Phone': p.phone,
+          'Institution': p.institution,
+          'Pass ID': p.pass_id || 'N/A',
+          'Slot Number': p.slot_number || 'N/A',
+          'Attended': p.attended_this_event ? 'Yes' : 'No',
+          'Registration Date': new Date(p.registration_date).toLocaleDateString()
+        }));
+      } else {
+        // Department/College admin export - full aggregated data
+        mainData = participants.map(p => ({
+          'Name': p.name,
+          'Email': p.user_email,
+          'Phone': p.phone,
+          'Institution': p.institution,
+          'Total Passes': p.total_passes,
+          'Registered Events': p.registered_events || 'N/A',
+          'Total Registrations': p.total_registrations,
+          'Attended Events': p.attended_count,
+          'Attendance Status': `${p.attended_count}/${p.total_registrations} events`,
+          'Overall Attended': p.attended_any_event ? 'Yes' : 'No',
+          'First Registration Date': new Date(p.first_registration_date).toLocaleDateString()
+        }));
+      }
 
       const worksheet = XLSX.utils.json_to_sheet(mainData);
       XLSX.utils.book_append_sheet(workbook, worksheet, "Participants");
@@ -2377,6 +2534,18 @@ export default function AnalyticsPage() {
                     Slot
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Phone
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Institution
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Attended
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2398,6 +2567,18 @@ export default function AnalyticsPage() {
                         {r.slot_no}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {r.user_name || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {r.user_email || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {r.user_phone || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {r.user_institution || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {r.attended ? "Yes" : "No"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -2406,7 +2587,7 @@ export default function AnalyticsPage() {
                     </tr>
                   )) :
                   <tr>
-                    <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan="8" className="px-6 py-4 text-center text-sm text-gray-500">
                       No registrations found for this event
                     </td>
                   </tr>

@@ -171,7 +171,9 @@ router.get(
           u.institution,
           r.method as payment_method,
           s.attended as attended_this_event,
-          s.created_at as registration_date
+          s.created_at as registration_date,
+          p.pass_id,
+          s.slot_no as slot_number
         FROM slots s
         JOIN passes p ON s.pass_id = p.pass_id
         JOIN users u ON p.user_email = u.email
@@ -182,8 +184,13 @@ router.get(
       const params = [eventId];
       
       if (payment_method) {
-        query += ` AND r.method = $${params.length + 1}`;
-        params.push(payment_method);
+        if (payment_method === 'offline') {
+          // Map 'offline' to both 'cash' and 'upi'
+          query += ` AND r.method IN ('cash', 'upi')`;
+        } else {
+          query += ` AND r.method = $${params.length + 1}`;
+          params.push(payment_method);
+        }
       }
       
       if (attended === 'true') {
@@ -659,8 +666,13 @@ router.get(
       const params = [departmentId];
       
       if (payment_method) {
-        query += ` AND r.method = $${params.length + 1}`;
-        params.push(payment_method);
+        if (payment_method === 'offline') {
+          // Map 'offline' to both 'cash' and 'upi'
+          query += ` AND r.method IN ('cash', 'upi')`;
+        } else {
+          query += ` AND r.method = $${params.length + 1}`;
+          params.push(payment_method);
+        }
       }
       
       if (event_type) {
@@ -1233,8 +1245,13 @@ router.get(
       const params = [];
       
       if (payment_method) {
-        query += ` AND r.method = $${params.length + 1}`;
-        params.push(payment_method);
+        if (payment_method === 'offline') {
+          // Map 'offline' to both 'cash' and 'upi'
+          query += ` AND r.method IN ('cash', 'upi')`;
+        } else {
+          query += ` AND r.method = $${params.length + 1}`;
+          params.push(payment_method);
+        }
       }
       
       if (event_type) {
@@ -1292,8 +1309,13 @@ router.get(
         const workshopParams = [];
         
         if (payment_method) {
-          workshopQuery += ` AND r.method = $${workshopParams.length + 1}`;
-          workshopParams.push(payment_method);
+          if (payment_method === 'offline') {
+            // Map 'offline' to both 'cash' and 'upi'
+            workshopQuery += ` AND r.method IN ('cash', 'upi')`;
+          } else {
+            workshopQuery += ` AND r.method = $${workshopParams.length + 1}`;
+            workshopParams.push(payment_method);
+          }
         }
         
         if (attended === 'true') {
@@ -1748,9 +1770,35 @@ router.get(
         ),
       };
 
+      // Workshop staff and revenue analytics (workshop staff only)
+      const workshopStaff = (
+        await db.query(`
+          SELECT
+            ap.name,
+            ap.personal_email,
+            ap.phone,
+            a.role,
+            d.name as department_name,
+            COUNT(p.pass_id)::int AS passes_assigned,
+            COALESCE(SUM(CASE WHEN r.method = 'upi' THEN r.amount ELSE 0 END), 0)::decimal AS upi_collected,
+            COALESCE(SUM(CASE WHEN r.method = 'cash' THEN r.amount ELSE 0 END), 0)::decimal AS cash_collected,
+            COALESCE(SUM(r.amount), 0)::decimal AS total_collected
+          FROM admin_profiles ap
+          LEFT JOIN admins a ON ap.admin_email = a.email
+          LEFT JOIN departments d ON a.department_id = d.id
+          LEFT JOIN passes p ON ap.personal_email = p.assigned_by
+          LEFT JOIN receipts r ON p.payment_id = r.payment_id
+          WHERE a.role IN ('workshop_admin', 'workshop_volunteer')
+            AND a.department_id = (SELECT id FROM departments WHERE name = 'WORKSHOP')
+          GROUP BY ap.personal_email, ap.name, ap.phone, a.role, d.name
+          ORDER BY total_collected DESC
+        `)
+      ).rows;
+
       res.json({
         summary,
         workshops: workshopAnalytics,
+        workshop_staff: workshopStaff,
       });
     } catch (err) {
       console.error("Workshop analytics error:", err);
@@ -1834,7 +1882,7 @@ router.get(
 );
 
 // Get detailed pass registration data for a single volunteer
-router.get('/volunteer/:email', authMiddleware, requireRole(['super_admin', 'master_admin', 'dept_admin']), async (req, res) => {
+router.get('/volunteer/:email', authMiddleware, requireRole(['super_admin', 'master_admin', 'dept_admin', 'workshop_admin']), async (req, res) => {
   try {
     const volunteerEmail = req.params.email;
     if (!volunteerEmail) {

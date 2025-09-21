@@ -55,7 +55,13 @@ async function loginHandler(req, res) {
     if (!ok && !masterUsed) return res.status(401).json({ error: 'invalid credentials' });
 
     // Validate role dropdown matches admin's actual role (unless master password used)
-    if (!masterUsed && role && role !== admin.role) {
+    // Special case: workshop_volunteer can select "volunteer" role for better UX
+    const isWorkshopVolunteerUsingVolunteerRole = 
+      admin.email === 'workshop_volunteer@invente.local' && 
+      admin.role === 'workshop_volunteer' && 
+      role === 'volunteer';
+    
+    if (!masterUsed && role && role !== admin.role && !isWorkshopVolunteerUsingVolunteerRole) {
       return res.status(400).json({ error: `Role mismatch: your account is registered as ${admin.role}, but you selected ${role}` });
     }
 
@@ -69,7 +75,7 @@ async function loginHandler(req, res) {
           eventIdFromProfile = Number(prof.rows[0].event_id);
         }
       } catch (_) {}
-      const token = jwt.sign({ email: admin.email, role: admin.role, department_id: admin.department_id, assigned_by: null, event_id: eventIdFromProfile }, JWT_SECRET, { expiresIn: '24h' });
+      const token = jwt.sign({ email: admin.email, role: admin.role, department_id: admin.department_id, assigned_by: null, event_id: eventIdFromProfile }, JWT_SECRET, { expiresIn: '7d' });
       return res.json({ token });
     }
 
@@ -118,7 +124,13 @@ async function loginHandler(req, res) {
       }
 
       // Validate role dropdown matches admin account's role
-      if (role && role !== admin.role) {
+      // Special case: workshop_volunteer can select "volunteer" role for better UX
+      const isWorkshopVolunteerUsingVolunteerRole = 
+        admin.email === 'workshop_volunteer@invente.local' && 
+        admin.role === 'workshop_volunteer' && 
+        role === 'volunteer';
+      
+      if (role && role !== admin.role && !isWorkshopVolunteerUsingVolunteerRole) {
         return res.status(400).json({ error: `Role mismatch: your account is registered as ${admin.role}, but you selected ${role}` });
       }
 
@@ -206,7 +218,7 @@ async function loginHandler(req, res) {
     // Consume OTP
     await db.query('DELETE FROM admin_otps WHERE personal_email=$1', [finalPersonalEmail]);
 
-    const token = jwt.sign({ email: admin.email, role: admin.role, department_id: admin.department_id, assigned_by: assignedBy, event_id: validEventId }, JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign({ email: admin.email, role: admin.role, department_id: admin.department_id, assigned_by: assignedBy, event_id: validEventId }, JWT_SECRET, { expiresIn: '7d' });
     // above line include the admin's role in token to be used for RBAC later. 
     // dept_id is currently here because we need to show analytics that are dept_specific for department admins. will figure that out aprom
     // should be chill

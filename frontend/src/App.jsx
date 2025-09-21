@@ -89,7 +89,7 @@ export default function App() {
             <Route
               path="/workshop-registration"
               element={
-                <RequireAuth roles={["volunteer", "super_admin", "master_admin", "workshop_admin"]}>
+                <RequireAuth roles={["volunteer", "super_admin", "master_admin", "workshop_admin", "workshop_volunteer"]}>
                   <WorkshopRegistrationPage />
                 </RequireAuth>
               }

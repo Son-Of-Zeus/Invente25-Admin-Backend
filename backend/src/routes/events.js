@@ -42,8 +42,8 @@ router.get('/', authMiddleware, async (req, res) => {
       } else {
         rows = (await db.query(queryBase + ' ORDER BY e.name')).rows;
       }
-    } else if (req.user.role === 'workshop_admin') {
-      // Workshop admin only sees workshop events
+    } else if (req.user.role === 'workshop_admin' || req.user.role === 'workshop_volunteer') {
+      // Workshop admin and workshop volunteer only see workshop events
       let workshopQuery = queryBase + " WHERE e.event_type = 'workshop'";
       if (deptId) {
         workshopQuery += ' AND e.department_id = $1';
@@ -51,7 +51,16 @@ router.get('/', authMiddleware, async (req, res) => {
       } else {
         rows = (await db.query(workshopQuery + ' ORDER BY e.name')).rows;
       }
-    } else if (req.user.role === 'dept_admin' || (req.user.role === 'volunteer' && req.user.department_id) || req.user.role === 'event_admin') {
+    } else if (req.user.role === 'event_admin') {
+      // Event admins only see their specific assigned event
+      if (!req.user.event_id) {
+        return res.status(403).json({ error: 'no event assigned to this event admin' });
+      }
+      rows = (await db.query(
+        queryBase + ' WHERE e.external_id = $1 ORDER BY e.name',
+        [req.user.event_id]
+      )).rows;
+    } else if (req.user.role === 'dept_admin' || (req.user.role === 'volunteer' && req.user.department_id)) {
       // Department-specific roles only see their department's events
       if (deptId && deptId !== req.user.department_id) {
         return res.status(403).json({ error: 'unauthorized to view other department events' });

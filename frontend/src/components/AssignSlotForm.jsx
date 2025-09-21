@@ -25,16 +25,11 @@ export default function AssignSlotForm({ onAssign, existingSlots = [] }) {
     setLoading(true);
     setErr(null);
     try {
-      // Fetch only technical events for slot assignment
+      // Fetch events - backend handles role-based filtering
       const resp = await authAxios.get(`/events`);
       const rows = resp.data.rows || [];
-      // Filter to only show technical events
-      let technicalEvents = rows.filter(event => event.event_type === 'technical');
-      
-      // Filter by department for department admins and department volunteers
-      if (user?.role === 'dept_admin' || (user?.role === 'volunteer' && user?.department_id)) {
-        technicalEvents = technicalEvents.filter(event => event.department_id === user.department_id);
-      }
+      // Filter to only show technical events (since slot assignment is only for technical events)
+      const technicalEvents = rows.filter(event => event.event_type === 'technical');
       
       setEvents(technicalEvents);
     } catch (e) {
