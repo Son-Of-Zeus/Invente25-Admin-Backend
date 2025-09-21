@@ -124,7 +124,7 @@ export default function Home() {
           </p>
           <div className="flex flex-wrap gap-4 text-sm text-gray-600">
             <span>📞 +91 86104 14291 - Shaun</span>
-            <span>📞 9655871195 - Irfan</span>
+            <span>📞 +91 96558 71195 - Irfan</span>
             <span>📞 +91 82202 89166 - Sai Pranav</span>
           </div>
         </div>
