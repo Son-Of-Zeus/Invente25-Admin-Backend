@@ -133,7 +133,7 @@ export default function LoginPage() {
             <input value={name} onChange={e => setName(e.target.value)} className="w-full border p-2 rounded" />
           </div>
           <div>
-            <label className="block text-sm">Personal Email</label>
+            <label className="block text-sm">College Email</label>
             <input value={personalEmail} onChange={e => setPersonalEmail(e.target.value)} className="w-full border p-2 rounded" />
           </div>
           <div>

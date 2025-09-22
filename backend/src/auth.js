@@ -75,7 +75,7 @@ async function loginHandler(req, res) {
           eventIdFromProfile = Number(prof.rows[0].event_id);
         }
       } catch (_) {}
-      const token = jwt.sign({ email: admin.email, role: admin.role, department_id: admin.department_id, assigned_by: null, event_id: eventIdFromProfile }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ email: admin.email, role: admin.role, department_id: admin.department_id, assigned_by: null, event_id: eventIdFromProfile }, JWT_SECRET, { expiresIn: '24h' });
       return res.json({ token });
     }
 
@@ -218,7 +218,7 @@ async function loginHandler(req, res) {
     // Consume OTP
     await db.query('DELETE FROM admin_otps WHERE personal_email=$1', [finalPersonalEmail]);
 
-    const token = jwt.sign({ email: admin.email, role: admin.role, department_id: admin.department_id, assigned_by: assignedBy, event_id: validEventId }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ email: admin.email, role: admin.role, department_id: admin.department_id, assigned_by: assignedBy, event_id: validEventId }, JWT_SECRET, { expiresIn: '24h' });
     // above line include the admin's role in token to be used for RBAC later. 
     // dept_id is currently here because we need to show analytics that are dept_specific for department admins. will figure that out aprom
     // should be chill
