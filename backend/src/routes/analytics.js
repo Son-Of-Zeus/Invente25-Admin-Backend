@@ -1163,7 +1163,7 @@ router.get(
           tech_online_registered: eventTypeTotals.tech_online_registered,
           tech_online_percentage: eventTypeTotals.tech_registrations > 0 ? 
             ((eventTypeTotals.tech_online_registered / eventTypeTotals.tech_registrations) * 100).toFixed(1) : "0.0",
-          nontech_registrations: eventTypeTotals.nontech_registrations,
+          nontech_registrations: eventTypeTotals.nontech_teams,
           nontech_revenue: eventTypeTotals.nontech_revenue,
           workshop_registrations: eventTypeTotals.workshop_registrations,
           workshop_revenue: eventTypeTotals.workshop_revenue,
@@ -1723,7 +1723,7 @@ router.get(
         FROM events e
         LEFT JOIN departments d ON e.department_id = d.id
         LEFT JOIN slots s ON s.event_id = e.external_id
-        LEFT JOIN passes p ON p.event_id = e.external_id
+        LEFT JOIN passes p ON p.pass_id = s.pass_id
         LEFT JOIN receipts r ON r.payment_id = p.payment_id
         GROUP BY e.external_id, e.name, e.event_type, d.name
         ORDER BY registrations DESC;
