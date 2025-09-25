@@ -31,7 +31,13 @@ export default function NonTechRegistration() {
     phoneNumber: '',
     institution: '',
     paymentMethod: 'cash',
-    selectedEventId: null
+    selectedEventId: null,
+    customAmount: '',
+    teamMembers: [
+      { name: '', email: '', phone: '', institution: '' },
+      { name: '', email: '', phone: '', institution: '' },
+      { name: '', email: '', phone: '', institution: '' }
+    ]
   };
 
   const [formData, setFormData] = useState(initialFormData);
@@ -70,15 +76,19 @@ export default function NonTechRegistration() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const handleTeamMemberChange = (memberIndex, field, value) => {
+    const updatedMembers = [...formData.teamMembers];
+    updatedMembers[memberIndex][field] = value;
+    setFormData({ ...formData, teamMembers: updatedMembers });
+  };
+
   const handleEventChange = (eventId) => {
     setFormData(prev => ({ ...prev, selectedEventId: eventId }));
   };
 
   const selectedEvent = formData.selectedEventId ? events.find(e => e.external_id === formData.selectedEventId) : null;
   const fallbackPrice = Number(import.meta.env.VITE_NON_TECH_DEFAULT_PRICE || 300);
-  const totalAmount = selectedEvent
-    ? (Number(selectedEvent.cost) || fallbackPrice)
-    : 0;
+  const totalAmount = formData.customAmount ? Number(formData.customAmount) : (selectedEvent ? (Number(selectedEvent.cost) || fallbackPrice) : 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -91,6 +101,26 @@ export default function NonTechRegistration() {
       return;
     }
 
+    if (!formData.customAmount || Number(formData.customAmount) <= 0) {
+      setError('Please enter a valid amount');
+      setLoading(false);
+      return;
+    }
+
+    // Validate team members - if any field is filled, all required fields must be filled
+    const teamMembersToSend = [];
+    for (let i = 0; i < formData.teamMembers.length; i++) {
+      const member = formData.teamMembers[i];
+      if (member.name || member.email || member.phone || member.institution) {
+        if (!member.name || !member.email) {
+          setError(`Team member ${i + 2}: Name and email are required when adding a team member`);
+          setLoading(false);
+          return;
+        }
+        teamMembersToSend.push(member);
+      }
+    }
+
     try {
       const eventData = [{ event_id: formData.selectedEventId }];
 
@@ -100,12 +130,14 @@ export default function NonTechRegistration() {
         phoneNumber: formData.phoneNumber,
         institution: formData.institution,
         paymentMethod: formData.paymentMethod,
-        events: eventData
+        events: eventData,
+        customAmount: Number(formData.customAmount),
+        teamMembers: teamMembersToSend
       });
 
       const registeredItemsDetails = selectedEvent ? [{
         name: selectedEvent.name,
-        cost: selectedEvent.cost ?? fallbackPrice,
+        cost: formData.customAmount,
         external_id: selectedEvent.external_id
       }] : [];
 
@@ -252,6 +284,101 @@ export default function NonTechRegistration() {
                   </select>
                 </div>
               </div>
+
+              <div className="mt-6">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <CurrencyRupeeIcon className="h-4 w-4" />
+                  Registration Amount
+                </label>
+                <input 
+                  type="number" 
+                  name="customAmount" 
+                  value={formData.customAmount} 
+                  onChange={handleInputChange} 
+                  required 
+                  min="1"
+                  step="0.01"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                  placeholder="Enter registration amount (₹)"
+                />
+                <p className="text-xs text-gray-500 mt-1">Enter the total registration amount for the team</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Team Members */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="border-b border-gray-200 p-6">
+              <div className="flex items-center gap-2">
+                <UserIcon className="h-6 w-6 text-gray-600" />
+                <h2 className="text-xl font-semibold text-gray-900">Team Members (Optional)</h2>
+              </div>
+              <p className="text-gray-600 text-sm mt-1">Add up to 3 additional team members (4 total including leader)</p>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {formData.teamMembers.map((member, index) => (
+                <div key={index} className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Team Member {index + 2}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                        <UserIcon className="h-4 w-4" />
+                        Full Name
+                      </label>
+                      <input 
+                        type="text" 
+                        value={member.name} 
+                        onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)} 
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                        placeholder="Enter member's full name"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                        <EnvelopeIcon className="h-4 w-4" />
+                        Email Address
+                      </label>
+                      <input 
+                        type="email" 
+                        value={member.email} 
+                        onChange={(e) => handleTeamMemberChange(index, 'email', e.target.value)} 
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                        placeholder="Enter member's email address"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                        <PhoneIcon className="h-4 w-4" />
+                        Phone Number
+                      </label>
+                      <input 
+                        type="tel" 
+                        value={member.phone} 
+                        onChange={(e) => handleTeamMemberChange(index, 'phone', e.target.value)} 
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                        placeholder="Enter member's phone number"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                        <BuildingOffice2Icon className="h-4 w-4" />
+                        Institution
+                      </label>
+                      <input 
+                        type="text" 
+                        value={member.institution} 
+                        onChange={(e) => handleTeamMemberChange(index, 'institution', e.target.value)} 
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                        placeholder="Enter member's institution"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -358,9 +485,14 @@ export default function NonTechRegistration() {
                   Total Amount: {totalAmount.toFixed(2)}
                 </div>
                 {selectedEvent && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    Registration fee for {selectedEvent.name}
-                  </p>
+                  <div className="text-sm text-gray-600 mt-1">
+                    <p>Registration fee for {selectedEvent.name}</p>
+                    {formData.teamMembers.some(m => m.name) && (
+                      <p className="text-purple-600 font-medium mt-1">
+                        Team size: {1 + formData.teamMembers.filter(m => m.name).length} members
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
               

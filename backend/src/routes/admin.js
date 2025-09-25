@@ -21,6 +21,7 @@ const ALLOWED_TABLES = [
   'admins',
   'admin_profiles',
   'admin_otps',
+  'nt_team_members',
 ];
 
 const isTableAllowed = (tableName) => ALLOWED_TABLES.includes(tableName);

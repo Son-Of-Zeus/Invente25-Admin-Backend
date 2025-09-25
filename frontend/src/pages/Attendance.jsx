@@ -114,7 +114,7 @@ export default function AttendancePage() {
         pass: resp.data.pass,
         slots: visibleSlots, // Use the potentially filtered slots
         event: resp.data.event,
-        teamMembers: resp.data.teamMembers
+        teamMembers: resp.data.teamMembers || []
       };
       setSelectedPass(passData);
 
@@ -383,6 +383,44 @@ export default function AttendancePage() {
                             )}
                         </div>
                     </div>
+                    
+                    {/* Team Members section for non-technical events */}
+                    {selectedPass.teamMembers && selectedPass.teamMembers.length > 0 && (
+                      <div className="mt-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <UserIcon className="h-5 w-5 text-gray-600" />
+                            <h5 className="font-medium text-gray-900">Team Members</h5>
+                            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-medium">
+                                {selectedPass.teamMembers.length}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {selectedPass.teamMembers.map((member, index) => (
+                            <div key={index} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                <div className="font-medium text-gray-900 mb-1">{member.full_name}</div>
+                                <div className="space-y-1 text-xs text-gray-600">
+                                <div className="flex items-center gap-1">
+                                    <UserIcon className="h-3 w-3" />
+                                    {member.email}
+                                </div>
+                                {member.institution && (
+                                    <div className="flex items-center gap-1">
+                                    <AcademicCapIcon className="h-3 w-3" />
+                                    {member.institution}
+                                    </div>
+                                )}
+                                {member.phone_number && (
+                                    <div className="flex items-center gap-1">
+                                    <PhoneIcon className="h-3 w-3" />
+                                    {member.phone_number}
+                                    </div>
+                                )}
+                                </div>
+                            </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -426,40 +464,7 @@ export default function AttendancePage() {
                             </div>
                         </div>
                     </div>
-                    <div>
-                        <div className="flex items-center gap-2 mb-4">
-                            <UserIcon className="h-5 w-5 text-gray-600" />
-                            <h5 className="font-medium text-gray-900">Team Members</h5>
-                            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-medium">
-                                {selectedPass.teamMembers.length}
-                            </span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {selectedPass.teamMembers.map((member, index) => (
-                            <div key={index} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                                <div className="font-medium text-gray-900 mb-1">{member.full_name}</div>
-                                <div className="space-y-1 text-xs text-gray-600">
-                                <div className="flex items-center gap-1">
-                                    <UserIcon className="h-3 w-3" />
-                                    {member.email}
-                                </div>
-                                {member.institution && (
-                                    <div className="flex items-center gap-1">
-                                    <AcademicCapIcon className="h-3 w-3" />
-                                    {member.institution}
-                                    </div>
-                                )}
-                                {member.phone_number && (
-                                    <div className="flex items-center gap-1">
-                                    <PhoneIcon className="h-3 w-3" />
-                                    {member.phone_number}
-                                    </div>
-                                )}
-                                </div>
-                            </div>
-                            ))}
-                        </div>
-                    </div>
+
                   </div>
                 )}
               </div>

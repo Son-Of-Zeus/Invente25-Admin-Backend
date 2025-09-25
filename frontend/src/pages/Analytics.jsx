@@ -670,7 +670,10 @@ function DepartmentViewContent({
                   Non-Technical Events
                 </div>
                 <div className="text-sm text-green-600">
-                  Registrations: {fmt(d.breakdown.non_technical.registrations)}
+                  Teams: {fmt(d.breakdown.non_technical.teams || d.breakdown.non_technical.registrations)}
+                  {d.breakdown.non_technical.participants && (
+                    <span> • Participants: {fmt(d.breakdown.non_technical.participants)}</span>
+                  )}
                 </div>
               </div>
               <div className="text-2xl font-bold text-green-600">
@@ -2786,7 +2789,10 @@ export default function AnalyticsPage() {
             <div className="bg-white p-6 rounded-lg shadow-sm border">
               <div className="text-sm text-gray-500 mb-1">Non-Technical Events</div>
               <div className="text-2xl font-bold text-green-600">
-                {fmt(c.totals.nontech_registrations)} reg
+                {fmt(c.totals.nontech_teams || c.totals.nontech_registrations)} teams
+                {c.totals.nontech_participants && (
+                  <span className="text-sm font-normal"> • {fmt(c.totals.nontech_participants)} participants</span>
+                )}
               </div>
               <div className="text-lg font-semibold text-green-500 mt-1">
                 {formatCurrency(c.totals.nontech_revenue)}
@@ -2925,9 +2931,10 @@ export default function AnalyticsPage() {
                 onClick={() => {
                   // Export college-level summary
                   const summaryData = [{
-                    'Total Registrations': c.totals.tech_registrations + c.totals.nontech_registrations + c.totals.workshop_registrations,
+                    'Total Registrations': c.totals.tech_registrations + (c.totals.nontech_teams || c.totals.nontech_registrations) + c.totals.workshop_registrations,
                     'Technical Events': c.totals.tech_registrations,
-                    'Non-Technical Events': c.totals.nontech_registrations,
+                    'Non-Technical Teams': c.totals.nontech_teams || c.totals.nontech_registrations,
+                    ...(c.totals.nontech_participants ? { 'Non-Technical Participants': c.totals.nontech_participants } : {}),
                     'Workshop Events': c.totals.workshop_registrations,
                     'Hackathon Teams': c.totals.hackathon_teams,
                     'Total Revenue': formatCurrency(c.totals.tech_revenue + c.totals.nontech_revenue + c.totals.workshop_revenue + c.totals.hackathon_revenue)

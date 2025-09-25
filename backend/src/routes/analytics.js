@@ -271,19 +271,22 @@ router.get(
       const nonTechRegRes = await db.query(
         `
       SELECT
-        COUNT(s.*)::int AS total_registrations,
-        COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END),0)::int AS total_attendance
+        COUNT(s.*)::int AS total_teams,
+        COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END),0)::int AS total_attendance,
+        (SELECT COUNT(*) FROM nt_team_members ntm
+         JOIN events e2 ON ntm.event_id = e2.external_id
+         WHERE e2.department_id = $1 AND e2.event_type = 'non-technical')::int AS total_participants
       FROM slots s
       JOIN events e ON s.event_id = e.external_id
       WHERE e.department_id = $1 AND e.event_type = 'non-technical'
     `,
         [deptId]
       );
-      const nontech_registrations =
-        nonTechRegRes.rows[0].total_registrations || 0;
+      const nontech_teams = nonTechRegRes.rows[0].total_teams || 0;
+      const nontech_participants = nonTechRegRes.rows[0].total_participants || 0;
       const nontech_attendance = nonTechRegRes.rows[0].total_attendance || 0;
 
-      const total_registrations = tech_registrations + nontech_registrations;
+      const total_registrations = tech_registrations + nontech_teams;
       const total_attendance = tech_attendance + nontech_attendance;
 
       // Per-event breakdown with event types - showing only non-technical revenue
@@ -527,7 +530,9 @@ router.get(
           attendance: tech_attendance,
         },
         non_technical: {
-          registrations: nontech_registrations,
+          teams: nontech_teams,
+          participants: nontech_participants,
+          registrations: nontech_teams, // Keep for backward compatibility
           attendance: nontech_attendance,
         },
       };
@@ -806,7 +811,10 @@ router.get(
         -- Non-technical events  
         (SELECT COUNT(s.*) FROM slots s 
          JOIN events e ON s.event_id = e.external_id 
-         WHERE e.event_type = 'non-technical')::int AS nontech_registrations,
+         WHERE e.event_type = 'non-technical')::int AS nontech_teams,
+        (SELECT COUNT(*) FROM nt_team_members ntm
+         JOIN events e ON ntm.event_id = e.external_id
+         WHERE e.event_type = 'non-technical')::int AS nontech_participants,
         (SELECT COALESCE(SUM(r.amount), 0) FROM slots s 
          JOIN events e ON s.event_id = e.external_id 
          JOIN passes p ON s.pass_id = p.pass_id 
@@ -936,7 +944,6 @@ router.get(
       WHERE e.department_id != (SELECT id FROM departments WHERE name = 'WORKSHOP')
       GROUP BY e.external_id, e.name, e.event_type, d.id, d.name
       ORDER BY registrations DESC
-      LIMIT 20
     `)
       ).rows;
 
@@ -1641,7 +1648,6 @@ async function getCollegeAnalyticsDataForExport() {
     WHERE e.department_id != (SELECT id FROM departments WHERE name = 'WORKSHOP')
     GROUP BY e.external_id, e.name, e.event_type, d.id, d.name
     ORDER BY registrations DESC
-    LIMIT 20
   `)
   ).rows;
 
@@ -1713,11 +1719,13 @@ router.get(
           d.name AS department_name,
           COUNT(s.*)::int AS registrations,
           COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END), 0)::int AS attendance,
-          (COUNT(s.*) * e.cost)::decimal AS revenue
+          COALESCE(SUM(r.amount), 0)::decimal AS revenue
         FROM events e
         LEFT JOIN departments d ON e.department_id = d.id
         LEFT JOIN slots s ON s.event_id = e.external_id
-        GROUP BY e.external_id, e.name, e.event_type, d.name, e.cost -- FIX: Added missing columns here
+        LEFT JOIN passes p ON p.event_id = e.external_id
+        LEFT JOIN receipts r ON r.payment_id = p.payment_id
+        GROUP BY e.external_id, e.name, e.event_type, d.name
         ORDER BY registrations DESC;
       `)).rows;
       res.json(allEvents);

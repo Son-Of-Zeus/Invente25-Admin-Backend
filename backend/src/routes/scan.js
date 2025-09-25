@@ -57,7 +57,24 @@ router.get('/scan/by-email/:email', authMiddleware, async (req, res) => {
           const event = slotRes.rows[0];
           // Permission Check (Option A): Only include if admin has access
           if (isSuperOrCentral || event.department_id === req.user.department_id) {
-            enrichedPasses.push({ ...passInfo, event });
+            // For non-technical events, also get team members
+            let teamMembers = [];
+            if (passInfo.passType === 'non-technical') {
+              const teamRes = await db.query(
+                `SELECT 
+                   member_email as email, 
+                   member_name as full_name, 
+                   member_phone as phone_number, 
+                   member_institution as institution, 
+                   is_leader
+                 FROM nt_team_members 
+                 WHERE team_leader_email = $1 AND event_id = $2
+                 ORDER BY is_leader DESC, member_name`,
+                [email, event.event_id]
+              );
+              teamMembers = teamRes.rows;
+            }
+            enrichedPasses.push({ ...passInfo, event, teamMembers });
           }
         }
       } else if (passInfo.passType === 'hackathon') {
@@ -148,6 +165,24 @@ router.get('/scan/:passId', authMiddleware, async (req, res) => {
         }
       }
 
+      // For non-technical events, also get team members
+      let teamMembers = [];
+      if (passType === 'non-technical') {
+        const teamRes = await db.query(
+          `SELECT 
+             member_email as email, 
+             member_name as full_name, 
+             member_phone as phone_number, 
+             member_institution as institution, 
+             is_leader
+           FROM nt_team_members 
+           WHERE team_leader_email = $1 AND event_id = $2
+           ORDER BY is_leader DESC, member_name`,
+          [pass.user_email, slot.event_id]
+        );
+        teamMembers = teamRes.rows || [];
+      }
+
       res.json({ 
         passType,
         pass, 
@@ -157,7 +192,8 @@ router.get('/scan/:passId', authMiddleware, async (req, res) => {
           event_name: slot.event_name,
           attended: slot.attended,
           event_type: slot.event_type
-        }
+        },
+        teamMembers
       });
 
     } else if (passType === 'hackathon') {

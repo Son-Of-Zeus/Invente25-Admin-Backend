@@ -12,11 +12,16 @@ router.post('/',
   authMiddleware, 
   requireRole(['volunteer', 'super_admin', 'master_admin', 'dept_admin']),
   async (req, res) => {
-    const { emailID, name, phoneNumber, institution, paymentMethod, events } = req.body;
+    const { emailID, name, phoneNumber, institution, paymentMethod, events, customAmount, teamMembers } = req.body;
 
     // Basic validation
     if (!emailID || !name || !phoneNumber || !institution || !paymentMethod || !Array.isArray(events)) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Validate custom amount
+    if (!customAmount || Number(customAmount) <= 0) {
+      return res.status(400).json({ error: 'Valid custom amount is required' });
     }
 
     // Validate email format
@@ -27,6 +32,18 @@ router.post('/',
     // Validate events array is not empty
     if (events.length === 0) {
       return res.status(400).json({ error: 'At least one event must be selected' });
+    }
+
+    // Validate team members if provided
+    const validatedTeamMembers = teamMembers || [];
+    for (let i = 0; i < validatedTeamMembers.length; i++) {
+      const member = validatedTeamMembers[i];
+      if (!member.name || !member.email) {
+        return res.status(400).json({ error: `Team member ${i + 1}: name and email are required` });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(member.email)) {
+        return res.status(400).json({ error: `Team member ${i + 1}: invalid email format` });
+      }
     }
 
     const client = await db.getClient();
@@ -69,20 +86,8 @@ router.post('/',
       const paymentID = uuidv4();
       const timestamp = new Date().toISOString();
 
-      // Compute amount as sum of event costs from DB (fallback to env default if missing)
-      const costsRes = await client.query(
-        `SELECT external_id, cost FROM events WHERE external_id = ANY($1) AND event_type = 'non-technical'`,
-        [eventIds]
-      );
-
-      if (costsRes.rows.length !== events.length) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'One or more non-technical events missing costs or invalid' });
-      }
-
-      const defaultNonTech = Number(process.env.NON_TECH_DEFAULT_PRICE || 300);
-      const totalAmount = costsRes.rows.reduce((sum, row) => sum + Number(row.cost ?? defaultNonTech), 0);
-      const amount = totalAmount.toFixed(2);
+      // Use custom amount instead of database costs
+      const amount = Number(customAmount).toFixed(2);
 
       // Prepare eventBookingDetails in the same format as workshops
       const eventBookingDetails = events.map(event => ({
@@ -115,12 +120,32 @@ router.post('/',
         phoneNumber
       });
 
+      // Store team members in nt_team_members table
+      const eventId = events[0].event_id; // Non-tech registration is single event
+      
+      // First, add the team leader
+      await client.query(
+        `INSERT INTO nt_team_members (team_leader_email, event_id, member_email, member_name, member_phone, member_institution, is_leader)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [emailID, eventId, emailID, name, phoneNumber, institution, true]
+      );
+
+      // Then add additional team members
+      for (const member of validatedTeamMembers) {
+        await client.query(
+          `INSERT INTO nt_team_members (team_leader_email, event_id, member_email, member_name, member_phone, member_institution, is_leader)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [emailID, eventId, member.email, member.name, member.phone || null, member.institution || null, false]
+        );
+      }
+
       await client.query('COMMIT');
       res.json({ 
         success: true, 
         paymentID,
         amount,
-        eventCount: events.length
+        eventCount: events.length,
+        teamSize: 1 + validatedTeamMembers.length
       });
 
     } catch (err) {
