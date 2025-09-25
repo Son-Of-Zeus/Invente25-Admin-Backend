@@ -33,11 +33,7 @@ export default function NonTechRegistration() {
     paymentMethod: 'cash',
     selectedEventId: null,
     customAmount: '',
-    teamMembers: [
-      { name: '', email: '', phone: '', institution: '' },
-      { name: '', email: '', phone: '', institution: '' },
-      { name: '', email: '', phone: '', institution: '' }
-    ]
+    teamMembers: [] // Start with empty array - just the main person
   };
 
   const [formData, setFormData] = useState(initialFormData);
@@ -79,6 +75,20 @@ export default function NonTechRegistration() {
   const handleTeamMemberChange = (memberIndex, field, value) => {
     const updatedMembers = [...formData.teamMembers];
     updatedMembers[memberIndex][field] = value;
+    setFormData({ ...formData, teamMembers: updatedMembers });
+  };
+
+  const addTeamMember = () => {
+    if (formData.teamMembers.length < 9) { // Max 9 additional members (10 total including leader)
+      setFormData({
+        ...formData,
+        teamMembers: [...formData.teamMembers, { name: '', email: '', phone: '', institution: '' }]
+      });
+    }
+  };
+
+  const removeTeamMember = (index) => {
+    const updatedMembers = formData.teamMembers.filter((_, i) => i !== index);
     setFormData({ ...formData, teamMembers: updatedMembers });
   };
 
@@ -309,76 +319,106 @@ export default function NonTechRegistration() {
           {/* Team Members */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="border-b border-gray-200 p-6">
-              <div className="flex items-center gap-2">
-                <UserIcon className="h-6 w-6 text-gray-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Team Members (Optional)</h2>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <UserIcon className="h-6 w-6 text-gray-600" />
+                    <h2 className="text-xl font-semibold text-gray-900">Team Members (Optional)</h2>
+                  </div>
+                  <p className="text-gray-600 text-sm mt-1">Add up to 9 additional team members (10 total including leader)</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addTeamMember}
+                  disabled={formData.teamMembers.length >= 9}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
+                >
+                  <UserIcon className="h-4 w-4" />
+                  Add Team Member
+                </button>
               </div>
-              <p className="text-gray-600 text-sm mt-1">Add up to 3 additional team members (4 total including leader)</p>
             </div>
             
             <div className="p-6 space-y-6">
-              {formData.teamMembers.map((member, index) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Team Member {index + 2}</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                        <UserIcon className="h-4 w-4" />
-                        Full Name
-                      </label>
-                      <input 
-                        type="text" 
-                        value={member.name} 
-                        onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)} 
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
-                        placeholder="Enter member's full name"
-                      />
+              {formData.teamMembers.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <UserIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="font-medium">No additional team members</p>
+                  <p className="text-sm">Click "Add Team Member" to add team members</p>
+                </div>
+              ) : (
+                formData.teamMembers.map((member, index) => (
+                  <div key={index} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-medium text-gray-900">Team Member {index + 2}</h3>
+                      <button
+                        type="button"
+                        onClick={() => removeTeamMember(index)}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium"
+                      >
+                        Remove
+                      </button>
                     </div>
-                    
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                        <EnvelopeIcon className="h-4 w-4" />
-                        Email Address
-                      </label>
-                      <input 
-                        type="email" 
-                        value={member.email} 
-                        onChange={(e) => handleTeamMemberChange(index, 'email', e.target.value)} 
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
-                        placeholder="Enter member's email address"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                        <PhoneIcon className="h-4 w-4" />
-                        Phone Number
-                      </label>
-                      <input 
-                        type="tel" 
-                        value={member.phone} 
-                        onChange={(e) => handleTeamMemberChange(index, 'phone', e.target.value)} 
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
-                        placeholder="Enter member's phone number"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                        <BuildingOffice2Icon className="h-4 w-4" />
-                        Institution
-                      </label>
-                      <input 
-                        type="text" 
-                        value={member.institution} 
-                        onChange={(e) => handleTeamMemberChange(index, 'institution', e.target.value)} 
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
-                        placeholder="Enter member's institution"
-                      />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                          <UserIcon className="h-4 w-4" />
+                          Full Name *
+                        </label>
+                        <input 
+                          type="text" 
+                          value={member.name} 
+                          onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)} 
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                          placeholder="Enter member's full name"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                          <EnvelopeIcon className="h-4 w-4" />
+                          Email Address *
+                        </label>
+                        <input 
+                          type="email" 
+                          value={member.email} 
+                          onChange={(e) => handleTeamMemberChange(index, 'email', e.target.value)} 
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                          placeholder="Enter member's email address"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                          <PhoneIcon className="h-4 w-4" />
+                          Phone Number
+                        </label>
+                        <input 
+                          type="tel" 
+                          value={member.phone} 
+                          onChange={(e) => handleTeamMemberChange(index, 'phone', e.target.value)} 
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                          placeholder="Enter member's phone number"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                          <BuildingOffice2Icon className="h-4 w-4" />
+                          Institution
+                        </label>
+                        <input 
+                          type="text" 
+                          value={member.institution} 
+                          onChange={(e) => handleTeamMemberChange(index, 'institution', e.target.value)} 
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                          placeholder="Enter member's institution"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
@@ -443,10 +483,6 @@ export default function NonTechRegistration() {
                             <div className="flex items-center gap-1">
                               <BuildingOffice2Icon className="h-3 w-3" />
                               <span>{event.department_name}</span>
-                            </div>
-                            <div className="flex items-center gap-1 text-green-600 font-medium">
-                              <CurrencyRupeeIcon className="h-3 w-3" />
-                              <span>{event.cost ?? fallbackPrice}</span>
                             </div>
                           </div>
                         </div>
