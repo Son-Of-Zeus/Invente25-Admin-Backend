@@ -1719,7 +1719,10 @@ router.get(
           d.name AS department_name,
           COUNT(s.*)::int AS registrations,
           COALESCE(SUM(CASE WHEN s.attended THEN 1 ELSE 0 END), 0)::int AS attendance,
-          COALESCE(SUM(r.amount), 0)::decimal AS revenue
+          CASE 
+            WHEN e.event_type = 'technical' THEN 0::decimal
+            ELSE COALESCE(SUM(r.amount), 0)::decimal
+          END AS revenue
         FROM events e
         LEFT JOIN departments d ON e.department_id = d.id
         LEFT JOIN slots s ON s.event_id = e.external_id
