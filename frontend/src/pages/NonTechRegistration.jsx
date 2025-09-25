@@ -291,6 +291,7 @@ export default function NonTechRegistration() {
                   >
                     <option value="cash">Cash</option>
                     <option value="upi">UPI</option>
+                    <option value="online">Online</option>
                   </select>
                 </div>
               </div>

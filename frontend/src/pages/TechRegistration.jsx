@@ -233,6 +233,7 @@ export default function TechRegistration() {
                   >
                     <option value="cash">Cash</option>
                     <option value="upi">UPI</option>
+                    <option value="online">Online</option>
                   </select>
                 </div>
               </div>

@@ -562,7 +562,7 @@ router.get(
             COUNT(p.pass_id)::int AS passes_assigned,
             COALESCE(SUM(CASE WHEN r.method = 'upi' THEN r.amount ELSE 0 END), 0)::decimal AS upi_collected,
             COALESCE(SUM(CASE WHEN r.method = 'cash' THEN r.amount ELSE 0 END), 0)::decimal AS cash_collected,
-            COALESCE(SUM(r.amount), 0)::decimal AS total_collected
+            COALESCE(SUM(CASE WHEN r.method IN ('upi', 'cash') THEN r.amount ELSE 0 END), 0)::decimal AS total_collected
           FROM admin_profiles ap
           LEFT JOIN admins a ON ap.admin_email = a.email
           LEFT JOIN departments d ON a.department_id = d.id
@@ -1137,7 +1137,7 @@ router.get(
               COUNT(p.pass_id)::int AS passes_assigned,
               COALESCE(SUM(CASE WHEN r.method = 'upi' THEN r.amount ELSE 0 END), 0)::decimal AS upi_collected,
               COALESCE(SUM(CASE WHEN r.method = 'cash' THEN r.amount ELSE 0 END), 0)::decimal AS cash_collected,
-              COALESCE(SUM(r.amount), 0)::decimal AS total_collected
+              COALESCE(SUM(CASE WHEN r.method IN ('upi', 'cash') THEN r.amount ELSE 0 END), 0)::decimal AS total_collected
               FROM admin_profiles ap
               LEFT JOIN admins a ON ap.admin_email = a.email
               LEFT JOIN departments d ON a.department_id = d.id
@@ -1790,7 +1790,7 @@ router.get(
             COUNT(p.pass_id)::int AS passes_assigned,
             COALESCE(SUM(CASE WHEN r.method = 'upi' THEN r.amount ELSE 0 END), 0)::decimal AS upi_collected,
             COALESCE(SUM(CASE WHEN r.method = 'cash' THEN r.amount ELSE 0 END), 0)::decimal AS cash_collected,
-            COALESCE(SUM(r.amount), 0)::decimal AS total_collected
+            COALESCE(SUM(CASE WHEN r.method IN ('upi', 'cash') THEN r.amount ELSE 0 END), 0)::decimal AS total_collected
           FROM admin_profiles ap
           LEFT JOIN admins a ON ap.admin_email = a.email
           LEFT JOIN departments d ON a.department_id = d.id
