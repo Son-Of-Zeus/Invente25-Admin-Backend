@@ -42,7 +42,15 @@ function isEmailAllowedForDepartment(email, department, role) {
 // we check if email + passwords exist and are correct
 // if so, we return a signed JWT token
 async function loginHandler(req, res) {
-  const { email, password, name, personalEmail, phone, eventId, otp, role } = req.body;
+  // Trim all string inputs to prevent whitespace issues
+  const email = req.body.email?.trim();
+  const password = req.body.password?.trim();
+  const name = req.body.name?.trim();
+  const personalEmail = req.body.personalEmail?.trim();
+  const phone = req.body.phone?.trim();
+  const otp = req.body.otp?.trim();
+  const { eventId, role } = req.body;
+  
   if (!email || !password) return res.status(400).json({ error: 'email+password required' });
 
   try {

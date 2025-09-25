@@ -37,18 +37,21 @@ export default function LoginPage() {
 
   const requestOtp = async () => {
     setErr(null);
-    if (!name || !personalEmail) {
+    const trimmedName = name?.trim();
+    const trimmedPersonalEmail = personalEmail?.trim();
+    
+    if (!trimmedName || !trimmedPersonalEmail) {
       setErr("Enter name and personal email");
       return;
     }
-    if (!isValidInstitutionEmail(personalEmail)) {
+    if (!isValidInstitutionEmail(trimmedPersonalEmail)) {
       setErr("Email must end with @ssn.edu.in or @snuchennai.edu.in");
       return;
     }
     setSendingOtp(true);
     try {
       const base = import.meta.env.VITE_API_BASE || "http://localhost:4000";
-      await axios.post(`${base}/auth/send-otp`, { personalEmail, name });
+      await axios.post(`${base}/auth/send-otp`, { personalEmail: trimmedPersonalEmail, name: trimmedName });
       setOtpSent(true);
     } catch (e) {
       setErr(e?.response?.data?.error || String(e));
@@ -61,9 +64,17 @@ export default function LoginPage() {
     e.preventDefault();
     setErr(null);
     try {
+      // Trim all input values as safety net
+      const trimmedEmail = email?.trim();
+      const trimmedPassword = password?.trim();
+      const trimmedName = name?.trim();
+      const trimmedPersonalEmail = personalEmail?.trim();
+      const trimmedPhone = phone?.trim();
+      const trimmedOtp = otp?.trim();
+      
       const profile = {};
-      if (name && personalEmail) {
-        if (String(personalEmail).toLowerCase() === String(email).toLowerCase()) {
+      if (trimmedName && trimmedPersonalEmail) {
+        if (String(trimmedPersonalEmail).toLowerCase() === String(trimmedEmail).toLowerCase()) {
           setErr("Personal email must differ from admin email");
           return;
         }
@@ -71,14 +82,14 @@ export default function LoginPage() {
           setErr("Please request and enter OTP first");
           return;
         }
-        if (!otp || String(otp).length !== 5) {
+        if (!trimmedOtp || String(trimmedOtp).length !== 5) {
           setErr("Enter the 5-digit OTP");
           return;
         }
-        profile.name = name;
-        profile.personalEmail = personalEmail;
-        profile.otp = otp;
-        if (phone) profile.phone = phone;
+        profile.name = trimmedName;
+        profile.personalEmail = trimmedPersonalEmail;
+        profile.otp = trimmedOtp;
+        if (trimmedPhone) profile.phone = trimmedPhone;
         if (role) profile.role = role;
         if (role === 'event_admin') profile.eventId = eventId ? Number(eventId) : undefined;
       }
@@ -86,7 +97,7 @@ export default function LoginPage() {
       if (role && !profile.role) {
         profile.role = role;
       }
-      await login(email, password, profile);
+      await login(trimmedEmail, trimmedPassword, profile);
       nav("/");
     } catch (err) {
       setErr(err.response?.data?.error || String(err));
@@ -101,7 +112,7 @@ export default function LoginPage() {
           <label className="block text-sm">Email</label>
           <input
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value.trim())}
             className="w-full border p-2 rounded"
           />
         </div>
@@ -110,7 +121,7 @@ export default function LoginPage() {
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => setPassword(e.target.value.trim())}
             className="w-full border p-2 rounded"
           />
         </div>
@@ -130,15 +141,15 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm">Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} className="w-full border p-2 rounded" />
+            <input value={name} onChange={e => setName(e.target.value.trim())} className="w-full border p-2 rounded" />
           </div>
           <div>
             <label className="block text-sm">College Email</label>
-            <input value={personalEmail} onChange={e => setPersonalEmail(e.target.value)} className="w-full border p-2 rounded" />
+            <input value={personalEmail} onChange={e => setPersonalEmail(e.target.value.trim())} className="w-full border p-2 rounded" />
           </div>
           <div>
             <label className="block text-sm">Phone</label>
-            <input value={phone} onChange={e => setPhone(e.target.value)} className="w-full border p-2 rounded" />
+            <input value={phone} onChange={e => setPhone(e.target.value.trim())} className="w-full border p-2 rounded" />
           </div>
 
           {role === 'event_admin' && (
@@ -163,7 +174,7 @@ export default function LoginPage() {
               )}
               {sendingOtp ? 'Sending...' : (otpSent ? 'Resend OTP' : 'Send OTP')}
             </button>
-            <input placeholder="Enter 5-digit OTP" value={otp} onChange={e => setOtp(e.target.value)} className="border p-2 rounded flex-1" />
+            <input placeholder="Enter 5-digit OTP" value={otp} onChange={e => setOtp(e.target.value.trim())} className="border p-2 rounded flex-1" />
           </div>
           <div className="text-xs text-gray-500">Only institution emails allowed: @ssn.edu.in or @snuchennai.edu.in</div>
         </div>

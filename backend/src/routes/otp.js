@@ -13,7 +13,10 @@ function isValidInstitutionEmail(email) {
 // Send OTP to personal email
 router.post('/send-otp', async (req, res) => {
   try {
-    const { personalEmail, name } = req.body;
+    // Trim inputs to prevent whitespace issues
+    const personalEmail = req.body.personalEmail?.trim();
+    const name = req.body.name?.trim();
+    
     if (!personalEmail || !name) return res.status(400).json({ error: 'personalEmail and name required' });
     if (!isValidInstitutionEmail(personalEmail)) return res.status(400).json({ error: 'email must be @ssn.edu.in or @snuchennai.edu.in' });
 
@@ -48,7 +51,10 @@ router.post('/send-otp', async (req, res) => {
 // Verify OTP for personal email
 router.post('/verify-otp', async (req, res) => {
   try {
-    const { personalEmail, otp } = req.body;
+    // Trim inputs to prevent whitespace issues
+    const personalEmail = req.body.personalEmail?.trim();
+    const otp = req.body.otp?.trim();
+    
     if (!personalEmail || !otp) return res.status(400).json({ error: 'personalEmail and otp required' });
     if (!isValidInstitutionEmail(personalEmail)) return res.status(400).json({ error: 'email must be @ssn.edu.in or @snuchennai.edu.in' });
 
