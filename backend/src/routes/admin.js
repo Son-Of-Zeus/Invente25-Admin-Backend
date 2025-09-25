@@ -32,7 +32,7 @@ router.get('/dump', authMiddleware, requireRole(['super_admin']), async (req, re
     const payload = {};
     for (const t of ALLOWED_TABLES) {
       try {
-        const { rows } = await db.query(`SELECT * FROM ${t} ORDER BY 1 DESC LIMIT 500`);
+        const { rows } = await db.query(`SELECT * FROM ${t} ORDER BY 1 DESC`);
         payload[t] = rows;
       } catch (e) {
         payload[t] = { error: e.message };
