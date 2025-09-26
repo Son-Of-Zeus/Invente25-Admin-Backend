@@ -117,13 +117,13 @@ export default function NonTechRegistration() {
       return;
     }
 
-    // Validate team members - if any field is filled, all required fields must be filled
+    // Validate team members - all fields are required for each added team member
     const teamMembersToSend = [];
     for (let i = 0; i < formData.teamMembers.length; i++) {
       const member = formData.teamMembers[i];
       if (member.name || member.email || member.phone || member.institution) {
-        if (!member.name || !member.email) {
-          setError(`Team member ${i + 2}: Name and email are required when adding a team member`);
+        if (!member.name || !member.email || !member.phone || !member.institution) {
+          setError(`Team member ${i + 2}: All fields (name, email, phone, and institution) are required when adding a team member`);
           setLoading(false);
           return;
         }
@@ -391,7 +391,7 @@ export default function NonTechRegistration() {
                       <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                           <PhoneIcon className="h-4 w-4" />
-                          Phone Number
+                          Phone Number *
                         </label>
                         <input 
                           type="tel" 
@@ -405,7 +405,7 @@ export default function NonTechRegistration() {
                       <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                           <BuildingOffice2Icon className="h-4 w-4" />
-                          Institution
+                          Institution *
                         </label>
                         <input 
                           type="text" 
