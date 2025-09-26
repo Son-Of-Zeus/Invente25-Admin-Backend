@@ -1544,10 +1544,14 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
     fetchWorkshopEvents();
   }, [authAxios]);
 
-  const handleEventClick = async (eventId) => {
+  const handleEventClick = async (workshop) => {
     try {
-      const response = await authAxios.get(`/analytics/event?event_id=${eventId}`);
-      onEventClick({ ...response.data, event_id: eventId });
+      const response = await authAxios.get(`/analytics/event?event_id=${workshop.event_id}`);
+      onEventClick({ 
+        ...response.data, 
+        event_id: workshop.event_id,
+        event_name: workshop.event_name 
+      });
     } catch (e) {
       console.error('Failed to fetch event analytics:', e);
     }
@@ -1702,7 +1706,7 @@ function WorkshopViewContent({ data, refreshTime, authAxios, onEventClick, selec
                     </td>
                     <td className="px-6 py-4 text-sm">
                       <button
-                        onClick={() => handleEventClick(workshop.event_id)}
+                        onClick={() => handleEventClick(workshop)}
                         className="text-blue-600 hover:text-blue-900"
                       >
                         View Details
