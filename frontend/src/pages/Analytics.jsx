@@ -72,6 +72,9 @@ function VolunteerDetailModal({ volunteer, onClose }) {
     if (!details.data) return;
     const dataToExport = details.data.map(p => ({
       'Pass ID': p.pass_id,
+      'Pass Type': p.pass_id.endsWith('$t') ? 'Tech' :
+                  p.pass_id.endsWith('$n') ? 'Non-Tech' :
+                  p.pass_id.endsWith('$w') ? 'Workshop' : 'Other',
       'Participant Email': p.user_email,
       'Participant Name': p.user_name,
       'Amount': p.amount,
@@ -127,6 +130,9 @@ function VolunteerDetailModal({ volunteer, onClose }) {
                     Pass ID
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
                     Participant
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
@@ -143,7 +149,7 @@ function VolunteerDetailModal({ volunteer, onClose }) {
               <tbody className="bg-white divide-y divide-gray-200">
                 {details.data.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="p-8 text-center text-gray-500">
+                    <td colSpan="6" className="p-8 text-center text-gray-500">
                       No passes have been assigned by this volunteer yet.
                     </td>
                   </tr>
@@ -152,6 +158,19 @@ function VolunteerDetailModal({ volunteer, onClose }) {
                     <tr key={pass.pass_id} className="hover:bg-gray-50">
                       <td className="px-4 py-4 font-mono text-xs text-gray-700">
                         {pass.pass_id.split("-")[0]}...
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          pass.pass_id.endsWith('$t') ? 'bg-blue-100 text-blue-800' :
+                          pass.pass_id.endsWith('$n') ? 'bg-green-100 text-green-800' :
+                          pass.pass_id.endsWith('$w') ? 'bg-purple-100 text-purple-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {pass.pass_id.endsWith('$t') ? 'Tech' :
+                           pass.pass_id.endsWith('$n') ? 'Non-Tech' :
+                           pass.pass_id.endsWith('$w') ? 'Workshop' :
+                           'Other'}
+                        </span>
                       </td>
                       <td className="px-4 py-4">
                         <div className="font-medium text-gray-900">
@@ -2050,6 +2069,11 @@ export default function AnalyticsPage() {
   const [trackFilter, setTrackFilter] = useState("");
   const [selectedTeam, setSelectedTeam] = useState(null);
   
+  // Staff & Revenue filter states
+  const [staffPassTypeFilter, setStaffPassTypeFilter] = useState("all");
+  const [staffPaymentMethodFilter, setStaffPaymentMethodFilter] = useState("all");
+  const [filteredStaffData, setFilteredStaffData] = useState(null);
+  
   // Participant list states
   const [participantLists, setParticipantLists] = useState({
     event: { data: null, loading: false, error: null },
@@ -2122,6 +2146,34 @@ export default function AnalyticsPage() {
       console.error("Export failed:", e);
     }
   };
+
+  // Fetch filtered staff data
+  const fetchFilteredStaffData = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (staffPassTypeFilter !== "all") {
+        params.append("passType", staffPassTypeFilter);
+      }
+      if (staffPaymentMethodFilter !== "all") {
+        params.append("paymentMethod", staffPaymentMethodFilter);
+      }
+      
+      const response = await authAxios.get(`/analytics/staff-revenue-filtered?${params.toString()}`);
+      setFilteredStaffData(response.data.filteredVolunteers);
+    } catch (error) {
+      console.error("Error fetching filtered staff data:", error);
+    }
+  };
+
+  // Effect to fetch filtered data when filters change
+  useEffect(() => {
+    if ((user?.role === "super_admin" || user?.role === "master_admin") && 
+        (staffPassTypeFilter !== "all" || staffPaymentMethodFilter !== "all")) {
+      fetchFilteredStaffData();
+    } else {
+      setFilteredStaffData(null);
+    }
+  }, [staffPassTypeFilter, staffPaymentMethodFilter, authAxios, user]);
 
   // Export functions for individual event types
   const handleExportTech = () => {
@@ -2228,8 +2280,11 @@ export default function AnalyticsPage() {
 
     // +++ NEW: Export handler for the main volunteer summary table +++
     const handleVolunteersExport = () => {
-      if (!stats?.data?.central_volunteers) return;
-      const dataToExport = stats.data.central_volunteers.map(vol => ({
+      // Use filtered data if available, otherwise use original data
+      const sourceData = filteredStaffData || stats?.data?.central_volunteers;
+      if (!sourceData) return;
+      
+      const dataToExport = sourceData.map(vol => ({
         'Staff Name': vol.name,
         'Email': vol.personal_email,
         'Phone': vol.phone,
@@ -2239,15 +2294,30 @@ export default function AnalyticsPage() {
                vol.role === 'workshop_volunteer' ? 'Workshop Volunteer' :
                vol.department_name ? 'Department Volunteer' : 'Central Volunteer',
         'Department': vol.department_name || 'Central',
-        'Passes Assigned': vol.passes_assigned,
-        'Revenue via UPI': vol.upi_collected,
-        'Revenue via Cash': vol.cash_collected,
+        'Total Passes': vol.passes_assigned,
+        'Tech Passes': vol.tech_passes || 0,
+        'Non-Tech Passes': vol.nontech_passes || 0,
+        'Workshop Passes': vol.workshop_passes || 0,
+        'UPI Revenue': vol.upi_collected,
+        'Cash Revenue': vol.cash_collected,
+        'Online Revenue': vol.online_collected || 0,
+        'On-Spot Revenue': vol.onspot_collected || vol.upi_collected + vol.cash_collected,
         'Total Revenue': vol.total_collected,
       }));
+      
+      // Add filter information to filename
+      let filterSuffix = '';
+      if (staffPassTypeFilter !== 'all' || staffPaymentMethodFilter !== 'all') {
+        const filters = [];
+        if (staffPassTypeFilter !== 'all') filters.push(staffPassTypeFilter);
+        if (staffPaymentMethodFilter !== 'all') filters.push(staffPaymentMethodFilter);
+        filterSuffix = `-${filters.join('-')}`;
+      }
+      
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Staff Revenue");
-      XLSX.writeFile(workbook, `invente-staff-revenue-${new Date().toISOString().split("T")[0]}.xlsx`);
+      XLSX.writeFile(workbook, `invente-staff-revenue${filterSuffix}-${new Date().toISOString().split("T")[0]}.xlsx`);
     };
 
     // Export handler for hackathon teams with detailed member information
@@ -3436,6 +3506,49 @@ export default function AnalyticsPage() {
                 Export Table
               </button>
             </div>
+            
+            {/* Staff & Revenue Filters */}
+            <div className="p-4 bg-gray-50 border-b">
+              <div className="flex gap-4 items-center">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700">Pass Type:</label>
+                  <select
+                    value={staffPassTypeFilter}
+                    onChange={(e) => setStaffPassTypeFilter(e.target.value)}
+                    className="px-3 py-1 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">All Pass Types</option>
+                    <option value="tech">Tech Only</option>
+                    <option value="nontech">Non-Tech Only</option>
+                    <option value="workshop">Workshop Only</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700">Payment Method:</label>
+                  <select
+                    value={staffPaymentMethodFilter}
+                    onChange={(e) => setStaffPaymentMethodFilter(e.target.value)}
+                    className="px-3 py-1 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">All Payment Methods</option>
+                    <option value="online">Online Only</option>
+                    <option value="onspot">On-Spot Only (UPI + Cash)</option>
+                  </select>
+                </div>
+                {(staffPassTypeFilter !== "all" || staffPaymentMethodFilter !== "all") && (
+                  <button
+                    onClick={() => {
+                      setStaffPassTypeFilter("all");
+                      setStaffPaymentMethodFilter("all");
+                    }}
+                    className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border rounded-md hover:bg-white"
+                  >
+                    Clear Filters
+                  </button>
+                )}
+              </div>
+            </div>
+            
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
@@ -3447,20 +3560,25 @@ export default function AnalyticsPage() {
                       Role & Department
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Passes Assigned
+                      Total Passes
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Revenue via UPI
+                      T | N | W
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Revenue via Cash
+                      On-Spot Revenue
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Online Revenue
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total Revenue
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {c.central_volunteers &&
-                    c.central_volunteers.map((vol) => (
-                      // +++ ADD onClick HANDLER AND STYLING TO THE ROW +++
+                  {(filteredStaffData || c.central_volunteers) &&
+                    (filteredStaffData || c.central_volunteers).map((vol) => (
                       <tr
                         key={vol.personal_email}
                         className="hover:bg-gray-50 cursor-pointer"
@@ -3491,11 +3609,23 @@ export default function AnalyticsPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
                           {fmt(vol.passes_assigned)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
-                          {formatCurrency(vol.upi_collected)}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-left">
+                          <div className="flex gap-1">
+                            <span className="text-blue-600">{fmt(vol.tech_passes || 0)}</span>
+                            <span>|</span>
+                            <span className="text-green-600">{fmt(vol.nontech_passes || 0)}</span>
+                            <span>|</span>
+                            <span className="text-purple-600">{fmt(vol.workshop_passes || 0)}</span>
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
-                          {formatCurrency(vol.cash_collected)}
+                          {formatCurrency(vol.onspot_collected || (vol.upi_collected + vol.cash_collected))}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left">
+                          {formatCurrency(vol.online_collected || 0)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-left font-semibold">
+                          {formatCurrency(vol.total_collected)}
                         </td>
                       </tr>
                     ))}

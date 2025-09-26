@@ -1,5 +1,5 @@
 // src/pages/Scan.jsx
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import AssignSlotForm from '../components/AssignSlotForm';
@@ -53,12 +53,43 @@ export default function ScanPage() {
   const [selectedPass, setSelectedPass] = useState(null); // For managing a single pass
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showScanSuccessToast, setShowScanSuccessToast] = useState(false);
 
   const resetState = () => {
     setPassId('');
     setUserPasses([]);
     setSelectedPass(null);
     setMsg(null);
+  };
+
+  // Function to detect mobile device
+  const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent) || 
+           window.innerWidth <= 768;
+  };
+
+  // Function to show scan success message and handle mobile scroll
+  const handleScanSuccess = () => {
+    if (isMobileDevice()) {
+      // Show toast for mobile
+      setShowScanSuccessToast(true);
+      setTimeout(() => {
+        setShowScanSuccessToast(false);
+      }, 3000);
+      
+      // Auto-scroll to results on mobile with a small delay
+      setTimeout(() => {
+        const resultsSection = document.querySelector('.scan-results');
+        if (resultsSection) {
+          resultsSection.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start',
+            inline: 'nearest'
+          });
+        }
+      }, 500); // Small delay to ensure results are rendered
+    }
+    // No disruption for desktop users
   };
   
   // Scan by Pass ID
@@ -71,7 +102,12 @@ export default function ScanPage() {
       if (!resp || !resp.data) throw new Error('No data returned');
 
       if (resp.data.passType !== 'technical') {
-        navigate(`/attendance?passId=${encodeURIComponent(id)}`);
+        // Handle success for non-technical passes
+        handleScanSuccess();
+        const delay = isMobileDevice() ? 1500 : 0; // Longer delay on mobile to show feedback
+        setTimeout(() => {
+          navigate(`/attendance?passId=${encodeURIComponent(id)}`);
+        }, delay);
         return;
       }
       
@@ -80,6 +116,9 @@ export default function ScanPage() {
         pass: resp.data.pass,
         slots: resp.data.slots || []
       });
+      
+      // Handle success for technical passes
+      handleScanSuccess();
     } catch (err) {
       setMsg(err?.response?.data?.error || String(err));
       console.error('doScan error', err);
@@ -98,6 +137,9 @@ export default function ScanPage() {
       setUserPasses(resp.data.passes || []);
       if (resp.data.passes.length === 0) {
         setMsg('No passes found for this email address.');
+      } else {
+        // Handle success for email search
+        handleScanSuccess();
       }
     } catch (err) {
       setMsg(err?.response?.data?.error || String(err));
@@ -222,7 +264,7 @@ export default function ScanPage() {
           </div>
 
           {/* Right Column - Results */}
-          <div className="space-y-6">
+          <div className="space-y-6 scan-results">
             {msg && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">{msg}</div>
             )}
@@ -321,6 +363,19 @@ export default function ScanPage() {
           </div>
         </div>
       </div>
+
+      {/* Mobile Scan Success Toast */}
+      {showScanSuccessToast && (
+        <div className="fixed top-4 left-4 right-4 z-50 md:max-w-sm md:mx-auto">
+          <div className="bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center space-x-3 animate-pulse">
+            <CheckCircleIcon className="h-6 w-6 flex-shrink-0" />
+            <div>
+              <p className="font-medium">Scan Successful!</p>
+              <p className="text-sm text-green-100">Scroll down to view results</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

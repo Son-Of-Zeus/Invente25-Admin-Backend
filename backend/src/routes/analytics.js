@@ -1135,9 +1135,19 @@ router.get(
               a.role,
               d.name as department_name,
               COUNT(p.pass_id)::int AS passes_assigned,
+              
+              -- Pass type breakdowns
+              COUNT(CASE WHEN p.pass_id LIKE '%$t' THEN 1 END)::int AS tech_passes,
+              COUNT(CASE WHEN p.pass_id LIKE '%$n' THEN 1 END)::int AS nontech_passes,
+              COUNT(CASE WHEN p.pass_id LIKE '%$w' THEN 1 END)::int AS workshop_passes,
+              
+              -- Payment method breakdowns
               COALESCE(SUM(CASE WHEN r.method = 'upi' THEN r.amount ELSE 0 END), 0)::decimal AS upi_collected,
               COALESCE(SUM(CASE WHEN r.method = 'cash' THEN r.amount ELSE 0 END), 0)::decimal AS cash_collected,
-              COALESCE(SUM(CASE WHEN r.method IN ('upi', 'cash') THEN r.amount ELSE 0 END), 0)::decimal AS total_collected
+              COALESCE(SUM(CASE WHEN r.method = 'online' THEN r.amount ELSE 0 END), 0)::decimal AS online_collected,
+              COALESCE(SUM(CASE WHEN r.method IN ('upi', 'cash') THEN r.amount ELSE 0 END), 0)::decimal AS onspot_collected,
+              COALESCE(SUM(r.amount), 0)::decimal AS total_collected
+              
               FROM admin_profiles ap
               LEFT JOIN admins a ON ap.admin_email = a.email
               LEFT JOIN departments d ON a.department_id = d.id
@@ -1891,6 +1901,70 @@ router.get(
     }
   }
 );
+
+// Filtered Staff & Revenue Analytics
+router.get("/staff-revenue-filtered", authMiddleware, requireRole(['super_admin', 'master_admin']), async (req, res) => {
+  try {
+    const { passType, paymentMethod } = req.query;
+
+    // Build WHERE conditions for filters
+    let passTypeFilter = "";
+    if (passType === "tech") {
+      passTypeFilter = "AND p.pass_id LIKE '%$t'";
+    } else if (passType === "nontech") {
+      passTypeFilter = "AND p.pass_id LIKE '%$n'";
+    } else if (passType === "workshop") {
+      passTypeFilter = "AND p.pass_id LIKE '%$w'";
+    }
+
+    let paymentMethodFilter = "";
+    if (paymentMethod === "online") {
+      paymentMethodFilter = "AND r.method = 'online'";
+    } else if (paymentMethod === "onspot") {
+      paymentMethodFilter = "AND r.method IN ('upi', 'cash')";
+    }
+
+    const filteredVolunteers = (
+      await db.query(`
+            SELECT
+            ap.name,
+            ap.personal_email,
+            ap.phone,
+            a.role,
+            d.name as department_name,
+            COUNT(p.pass_id)::int AS passes_assigned,
+            
+            -- Pass type breakdowns
+            COUNT(CASE WHEN p.pass_id LIKE '%$t' THEN 1 END)::int AS tech_passes,
+            COUNT(CASE WHEN p.pass_id LIKE '%$n' THEN 1 END)::int AS nontech_passes,
+            COUNT(CASE WHEN p.pass_id LIKE '%$w' THEN 1 END)::int AS workshop_passes,
+            
+            -- Payment method breakdowns
+            COALESCE(SUM(CASE WHEN r.method = 'upi' THEN r.amount ELSE 0 END), 0)::decimal AS upi_collected,
+            COALESCE(SUM(CASE WHEN r.method = 'cash' THEN r.amount ELSE 0 END), 0)::decimal AS cash_collected,
+            COALESCE(SUM(CASE WHEN r.method = 'online' THEN r.amount ELSE 0 END), 0)::decimal AS online_collected,
+            COALESCE(SUM(CASE WHEN r.method IN ('upi', 'cash') THEN r.amount ELSE 0 END), 0)::decimal AS onspot_collected,
+            COALESCE(SUM(r.amount), 0)::decimal AS total_collected
+            
+            FROM admin_profiles ap
+            LEFT JOIN admins a ON ap.admin_email = a.email
+            LEFT JOIN departments d ON a.department_id = d.id
+            LEFT JOIN passes p ON ap.personal_email = p.assigned_by
+            LEFT JOIN receipts r ON p.payment_id = r.payment_id
+            WHERE a.role IN ('volunteer', 'dept_admin', 'master_admin', 'workshop_admin', 'workshop_volunteer')
+            ${passTypeFilter}
+            ${paymentMethodFilter}
+            GROUP BY ap.personal_email, ap.name, ap.phone, a.role, d.name
+           ORDER BY total_collected DESC
+         `)
+    ).rows;
+
+    res.status(200).json({ filteredVolunteers });
+  } catch (error) {
+    console.error("Error in filtered staff & revenue analytics:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // Get detailed pass registration data for a single volunteer
 router.get('/volunteer/:email', authMiddleware, requireRole(['super_admin', 'master_admin', 'dept_admin', 'workshop_admin']), async (req, res) => {

@@ -117,13 +117,13 @@ export default function NonTechRegistration() {
       return;
     }
 
-    // Validate team members - all fields are required for each added team member
+    // Validate team members - name, email, and institution are required; phone is optional
     const teamMembersToSend = [];
     for (let i = 0; i < formData.teamMembers.length; i++) {
       const member = formData.teamMembers[i];
       if (member.name || member.email || member.phone || member.institution) {
-        if (!member.name || !member.email || !member.phone || !member.institution) {
-          setError(`Team member ${i + 2}: All fields (name, email, phone, and institution) are required when adding a team member`);
+        if (!member.name || !member.email || !member.institution) {
+          setError(`Team member ${i + 2}: Name, email, and institution are required fields. Phone number is optional.`);
           setLoading(false);
           return;
         }
@@ -391,14 +391,14 @@ export default function NonTechRegistration() {
                       <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                           <PhoneIcon className="h-4 w-4" />
-                          Phone Number *
+                          Phone Number <span className="text-gray-500">(Optional)</span>
                         </label>
                         <input 
                           type="tel" 
                           value={member.phone} 
                           onChange={(e) => handleTeamMemberChange(index, 'phone', e.target.value)} 
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
-                          placeholder="Enter member's phone number"
+                          placeholder="Enter member's phone number (optional)"
                         />
                       </div>
                       

@@ -38,11 +38,15 @@ router.post('/',
     const validatedTeamMembers = teamMembers || [];
     for (let i = 0; i < validatedTeamMembers.length; i++) {
       const member = validatedTeamMembers[i];
-      if (!member.name || !member.email) {
-        return res.status(400).json({ error: `Team member ${i + 1}: name and email are required` });
+      if (!member.name || !member.email || !member.institution) {
+        return res.status(400).json({ 
+          error: `Team member ${i + 1}: Name, email, and institution are required fields. Phone number is optional.` 
+        });
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(member.email)) {
-        return res.status(400).json({ error: `Team member ${i + 1}: invalid email format` });
+        return res.status(400).json({ 
+          error: `Team member ${i + 1}: Invalid email format. Please enter a valid email address.` 
+        });
       }
     }
 
@@ -135,7 +139,7 @@ router.post('/',
         await client.query(
           `INSERT INTO nt_team_members (team_leader_email, event_id, member_email, member_name, member_phone, member_institution, is_leader)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [emailID, eventId, member.email, member.name, member.phone || null, member.institution || null, false]
+          [emailID, eventId, member.email, member.name, member.phone || null, member.institution, false]
         );
       }
 
@@ -151,11 +155,33 @@ router.post('/',
     } catch (err) {
       await client.query('ROLLBACK');
       console.error('Non-tech registration error:', err);
-      res.status(500).json({ 
-        error: err.message === 'One or more invalid non-technical event IDs' 
-          ? err.message 
-          : 'Server error during non-tech registration' 
-      });
+      
+      // Handle specific database constraint errors
+      if (err.code === '23505') { // Unique constraint violation
+        if (err.detail?.includes('nt_team_members_unique_member_event')) {
+          res.status(400).json({ 
+            error: 'One of the team members is already registered for this event. Please check the email addresses and try again.' 
+          });
+        } else {
+          res.status(400).json({ 
+            error: 'A team member with this email is already registered for this event.' 
+          });
+        }
+      } else if (err.code === '23514') { // Check constraint violation
+        res.status(400).json({ 
+          error: 'Invalid data provided. Please check all required fields are filled correctly.' 
+        });
+      } else if (err.code === '23502') { // Not null violation
+        res.status(400).json({ 
+          error: 'Missing required information. Please ensure all required fields are provided.' 
+        });
+      } else {
+        res.status(500).json({ 
+          error: err.message === 'One or more invalid non-technical event IDs' 
+            ? err.message 
+            : 'Server error during registration. Please try again or contact support if the issue persists.' 
+        });
+      }
     } finally {
       client.release();
     }
