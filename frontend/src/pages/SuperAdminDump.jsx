@@ -86,6 +86,7 @@ export default function SuperAdminDump() {
     hack_passes: ['team_id'],
     hack_reg_details: ['team_id', 'email'],
     track: ['team_id'],
+    nt_team_members: ['team_leader_email', 'event_id', 'member_email'],
   };
 
   const EXCLUDED_INSERT_COLS = {
