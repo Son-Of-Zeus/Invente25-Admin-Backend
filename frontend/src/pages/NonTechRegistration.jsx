@@ -308,7 +308,7 @@ export default function NonTechRegistration() {
                   required 
                   min="1"
                   step="0.01"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   placeholder="Enter registration amount (₹)"
                 />
                 <p className="text-xs text-gray-500 mt-1">Enter the total registration amount for the team</p>
