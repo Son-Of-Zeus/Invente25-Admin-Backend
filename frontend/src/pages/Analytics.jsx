@@ -257,6 +257,10 @@ function EventDetailModal({ event, onClose }) {
 
   const handleExport = () => {
     if (!details.data?.registrations) return;
+    
+    // Get event name with fallback
+    const eventName = event.event_name || event.name || `Event-${event.event_id || 'Unknown'}`;
+    
     const dataToExport = details.data.registrations.map(r => ({
       'Pass ID': r.pass_id,
       'Slot No': r.slot_no,
@@ -270,7 +274,7 @@ function EventDetailModal({ event, onClose }) {
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Registrations");
-    XLSX.writeFile(workbook, `invente-event-registrants-${event.event_name.replace(/ /g, '_')}-${new Date().toISOString().split("T")[0]}.xlsx`);
+    XLSX.writeFile(workbook, `invente-event-registrants-${eventName.replace(/ /g, '_')}-${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
   const d = details.data;
@@ -3111,7 +3115,7 @@ export default function AnalyticsPage() {
                           onClick={async () => {
                             try {
                               const response = await authAxios.get(`/analytics/event?event_id=${ws.event_id}`);
-                              setSelectedEvent({ ...response.data, event_id: ws.event_id });
+                              setSelectedEvent({ ...response.data, event_id: ws.event_id, event_name: ws.event_name });
                             } catch (e) {
                               console.error('Failed to fetch workshop analytics:', e);
                             }
