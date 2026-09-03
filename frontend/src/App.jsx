@@ -16,7 +16,7 @@ import TechRegistrationPage from "./pages/TechRegistration";
 import WorkshopRegistrationPage from "./pages/WorkshopRegistration";
 import NonTechRegistrationPage from "./pages/NonTechRegistration";
 import SuperAdminDump from "./pages/SuperAdminDump";
-import ReceiptTest from "./pages/ReceiptTest";
+import ReceiptReviewPage from "./pages/ReceiptReview";
 
 function RequireAuth({ children, roles }) {
   // simple guard in App; more advanced guard is implemented in pages as needed
@@ -28,7 +28,7 @@ function RequireAuth({ children, roles }) {
       const payload = JSON.parse(atob(token.split(".")[1]));
       if (!roles.includes(payload.role))
         return <div className="p-4">Forbidden</div>;
-    } catch (e) {
+    } catch {
       return <Navigate to="/login" replace />;
     }
   }
@@ -111,10 +111,10 @@ export default function App() {
               }
             />
             <Route
-              path="/receipt-test"
+              path="/receipt-review"
               element={
-                <RequireAuth roles={["super_admin"]}>
-                  <ReceiptTest />
+                <RequireAuth>
+                  <ReceiptReviewPage />
                 </RequireAuth>
               }
             />

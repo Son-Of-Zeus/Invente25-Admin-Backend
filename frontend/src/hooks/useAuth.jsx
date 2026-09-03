@@ -1,8 +1,39 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useMemo, useState } from "react";
 import { createApi } from "../api/api";
 import axios from "axios";
 
 const AuthContext = createContext(null);
+
+function decodeJwtPayload(token) {
+  try {
+    const encodedPayload = token?.split(".")[1];
+    if (!encodedPayload) return null;
+    const base64 = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function userFromPayload(payload) {
+  if (!payload) return null;
+  const roles = Array.isArray(payload.roles) ? payload.roles : [];
+  const primaryRole = payload.primary_role || payload.role || roles[0] || null;
+
+  return {
+    ...payload,
+    email: payload.email || null,
+    role: primaryRole,
+    primary_role: payload.primary_role || null,
+    roles,
+    permissions: Array.isArray(payload.permissions) ? payload.permissions : [],
+    department_id: payload.department_id ?? null,
+    department_ids: Array.isArray(payload.department_ids) ? payload.department_ids : [],
+    event_id: payload.event_id ?? null,
+    event_ids: Array.isArray(payload.event_ids) ? payload.event_ids : [],
+  };
+}
 
 export function useAuth() {
   return useContext(AuthContext);
@@ -11,8 +42,18 @@ export function useAuth() {
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [user, setUser] = useState(() => {
+    const decodedUser = userFromPayload(decodeJwtPayload(localStorage.getItem("token")));
+    if (decodedUser) return decodedUser;
+
     const raw = localStorage.getItem("user");
-    return raw ? JSON.parse(raw) : null;
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        localStorage.removeItem("user");
+      }
+    }
+    return null;
   });
 
   // REMOVED: The problematic useEffect that caused the race condition.
@@ -25,15 +66,8 @@ export function AuthProvider({ children }) {
       { email, password, ...profile }
     );
     const t = resp.data.token;
-    const payload = JSON.parse(atob(t.split(".")[1]));
-    
-    const newUser = {
-      email: payload.email,
-      role: payload.role,
-      department_id: payload.department_id,
-      assigned_by: payload.assigned_by || null,
-      event_id: payload.event_id || null,
-    };
+    const payload = decodeJwtPayload(t);
+    const newUser = userFromPayload(payload);
 
     // FIX: Update localStorage immediately and synchronously BEFORE updating state.
     localStorage.setItem("token", t);
@@ -54,7 +88,7 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  const authAxios = createApi(token);
+  const authAxios = useMemo(() => createApi(token), [token]);
 
   return (
     <AuthContext.Provider value={{ token, user, login, logout, authAxios }}>
