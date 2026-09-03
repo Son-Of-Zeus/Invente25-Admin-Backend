@@ -1,16 +1,36 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 const DEFAULT_ISSUER = 'invente-auth';
-const DEFAULT_AUDIENCE = 'invente-admin-api';
+const DEFAULT_AUDIENCES = ['invente-admin-api', 'invente-review-api'];
 const DEFAULT_ALGORITHM = 'RS256';
 // Accept UUIDv4, UUIDv7, and other PostgreSQL UUID values used by the
 // participant/auth repositories.
 const STAFF_SUBJECT_PATTERN = /^staff:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 
 function configuredPublicKey() {
-  const value = process.env.JWT_PUBLIC_KEY;
-  if (!value) return null;
-  return value.replace(/\\n/g, '\n');
+  const configuredPublic = process.env.JWT_PUBLIC_KEY;
+  if (configuredPublic) return configuredPublic.replace(/\\n/g, '\n');
+
+  const configuredPrivate = process.env.JWT_PRIVATE_KEY;
+  if (!configuredPrivate) return null;
+
+  try {
+    const privateKey = crypto.createPrivateKey(configuredPrivate.replace(/\\n/g, '\n'));
+    return crypto.createPublicKey(privateKey).export({ type: 'spki', format: 'pem' });
+  } catch (error) {
+    const configError = new Error('JWT_PRIVATE_KEY is invalid');
+    configError.code = 'AUTH_CONFIG_MISSING';
+    throw configError;
+  }
+}
+
+function configuredAudiences() {
+  const configured = process.env.JWT_AUDIENCES || process.env.JWT_AUDIENCE;
+  if (!configured) return DEFAULT_AUDIENCES;
+
+  const audiences = configured.split(',').map(value => value.trim()).filter(Boolean);
+  return audiences.length > 0 ? audiences : DEFAULT_AUDIENCES;
 }
 
 function getBearerToken(req) {
@@ -34,9 +54,9 @@ function verifyStaffToken(token) {
   }
 
   const payload = jwt.verify(token, publicKey, {
-    algorithms: [process.env.JWT_ALGORITHM || DEFAULT_ALGORITHM],
+    algorithms: [DEFAULT_ALGORITHM],
     issuer: process.env.JWT_ISSUER || DEFAULT_ISSUER,
-    audience: process.env.JWT_AUDIENCE || DEFAULT_AUDIENCE,
+    audience: configuredAudiences(),
   });
 
   if (payload.token_type !== 'access') {

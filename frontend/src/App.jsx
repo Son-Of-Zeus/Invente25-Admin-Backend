@@ -25,8 +25,15 @@ function RequireAuth({ children, roles }) {
   if (!token) return <Navigate to="/login" replace />;
   if (roles) {
     try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      if (!roles.includes(payload.role))
+      const encodedPayload = token.split(".")[1];
+      const base64 = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+      const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
+      const tokenRoles = [
+        payload.primary_role,
+        payload.role,
+        ...(Array.isArray(payload.roles) ? payload.roles : []),
+      ].filter(Boolean);
+      if (!roles.some(role => tokenRoles.includes(role)))
         return <div className="p-4">Forbidden</div>;
     } catch {
       return <Navigate to="/login" replace />;

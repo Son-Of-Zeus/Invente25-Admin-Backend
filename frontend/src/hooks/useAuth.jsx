@@ -35,48 +35,67 @@ function userFromPayload(payload) {
   };
 }
 
+function readStoredAuth() {
+  const storedToken = localStorage.getItem("token");
+  const payload = decodeJwtPayload(storedToken);
+  const isStaffToken = payload
+    && payload.iss === "invente-auth"
+    && payload.token_type === "access"
+    && typeof payload.sub === "string"
+    && Array.isArray(payload.roles)
+    && payload.roles.length > 0;
+
+  if (!isStaffToken) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    return { token: null, user: null };
+  }
+
+  return { token: storedToken, user: userFromPayload(payload) };
+}
+
+// The context hook and provider intentionally live together for this app.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   return useContext(AuthContext);
 }
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(localStorage.getItem("token"));
-  const [user, setUser] = useState(() => {
-    const decodedUser = userFromPayload(decodeJwtPayload(localStorage.getItem("token")));
-    if (decodedUser) return decodedUser;
-
-    const raw = localStorage.getItem("user");
-    if (raw) {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        localStorage.removeItem("user");
-      }
-    }
-    return null;
-  });
+  const [initialAuth] = useState(readStoredAuth);
+  const [token, setToken] = useState(initialAuth.token);
+  const [user, setUser] = useState(initialAuth.user);
 
   // REMOVED: The problematic useEffect that caused the race condition.
   // The logic is now handled directly in login() and logout().
 
-  const login = async (email, password, profile = {}) => {
+  const saveToken = (newToken) => {
+    const payload = decodeJwtPayload(newToken);
+    const newUser = userFromPayload(payload);
+
+    if (!newUser || payload?.iss !== "invente-auth" || payload?.token_type !== "access") {
+      throw new Error("server returned an invalid staff token");
+    }
+
+    localStorage.setItem("token", newToken);
+    localStorage.setItem("user", JSON.stringify(newUser));
+    setToken(newToken);
+    setUser(newUser);
+    return { token: newToken, user: newUser };
+  };
+
+  const login = async (email, password) => {
     const base = import.meta.env.VITE_API_BASE || "http://localhost:4000/organizers/api";
     const resp = await axios.post(
       `${base}/auth/login`,
-      { email, password, ...profile }
+      { email, password }
     );
-    const t = resp.data.token;
-    const payload = decodeJwtPayload(t);
-    const newUser = userFromPayload(payload);
+    return saveToken(resp.data.token);
+  };
 
-    // FIX: Update localStorage immediately and synchronously BEFORE updating state.
-    localStorage.setItem("token", t);
-    localStorage.setItem("user", JSON.stringify(newUser));
-
-    setToken(t);
-    setUser(newUser);
-    
-    return { token: t, user: payload };
+  const signup = async (profile) => {
+    const base = import.meta.env.VITE_API_BASE || "http://localhost:4000/organizers/api";
+    const resp = await axios.post(`${base}/auth/signup`, profile);
+    return saveToken(resp.data.token);
   };
 
   const logout = () => {
@@ -91,7 +110,7 @@ export function AuthProvider({ children }) {
   const authAxios = useMemo(() => createApi(token), [token]);
 
   return (
-    <AuthContext.Provider value={{ token, user, login, logout, authAxios }}>
+    <AuthContext.Provider value={{ token, user, login, signup, logout, authAxios }}>
       {children}
     </AuthContext.Provider>
   );

@@ -46,16 +46,9 @@ function Field({ label, value }) {
 }
 
 function ReceiptReviewPage() {
-  const { authAxios, user } = useAuth();
+  const { authAxios } = useAuth();
   const [registration, setRegistration] = useState(null);
   const [registrationLoading, setRegistrationLoading] = useState(true);
-  const [signup, setSignup] = useState({
-    name: "",
-    email: user?.email || "",
-    dept: "",
-    password: "",
-  });
-  const [signupLoading, setSignupLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -155,32 +148,6 @@ function ReceiptReviewPage() {
     };
   }, [authAxios, refreshVersion, registration, selectedId]);
 
-  function updateSignup(field, value) {
-    setSignup((current) => ({ ...current, [field]: value }));
-  }
-
-  async function submitSignup(event) {
-    event.preventDefault();
-    setSignupLoading(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const response = await authAxios.post("/receipt-review/volunteers/signup", {
-        email: signup.email,
-        password: signup.password,
-        name: signup.name,
-        dept: signup.dept || null,
-      });
-      setRegistration({ registered: true, volunteer: response.data.volunteer });
-      setSignup((current) => ({ ...current, password: "" }));
-      setMessage("Volunteer signup completed.");
-    } catch (requestError) {
-      setError(getErrorMessage(requestError, "Could not complete volunteer signup"));
-    } finally {
-      setSignupLoading(false);
-    }
-  }
-
   async function decide(status) {
     if (!selectedId || detail?.status !== "NotVerified") return;
     setActionLoading(true);
@@ -204,62 +171,14 @@ function ReceiptReviewPage() {
     return <div className="mx-auto max-w-7xl p-6 text-gray-600">Checking volunteer signup…</div>;
   }
 
-  if (registration && !registration.registered) {
+  if (!registration?.registered) {
     return (
       <div className="mx-auto max-w-xl p-4 md:p-6">
         <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-900/5">
-          <h1 className="text-2xl font-bold text-gray-900">Volunteer signup</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Volunteer account required</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Complete this once before viewing or deciding receipt submissions. Your volunteer ID is taken from the staff JWT.
+            This staff account is not registered in the verification table. Log out and use the approved volunteer signup flow first.
           </p>
-          <form onSubmit={submitSignup} className="mt-6 space-y-4">
-            <label className="block text-sm font-medium text-gray-700">
-              Name
-              <input
-                required
-                value={signup.name}
-                onChange={(event) => updateSignup("name", event.target.value)}
-                className="mt-1 w-full rounded border p-2"
-              />
-            </label>
-            <label className="block text-sm font-medium text-gray-700">
-              JWT email
-              <input
-                required
-                type="email"
-                value={signup.email}
-                onChange={(event) => updateSignup("email", event.target.value)}
-                className="mt-1 w-full rounded border bg-gray-50 p-2"
-              />
-              <span className="mt-1 block text-xs font-normal text-gray-500">This must match the email in your shared staff JWT.</span>
-            </label>
-            <label className="block text-sm font-medium text-gray-700">
-              Department
-              <input
-                value={signup.dept}
-                onChange={(event) => updateSignup("dept", event.target.value)}
-                className="mt-1 w-full rounded border p-2"
-              />
-            </label>
-            <label className="block text-sm font-medium text-gray-700">
-              Password
-              <input
-                required
-                type="password"
-                value={signup.password}
-                onChange={(event) => updateSignup("password", event.target.value)}
-                className="mt-1 w-full rounded border p-2"
-              />
-            </label>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <button
-              type="submit"
-              disabled={signupLoading}
-              className="rounded bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {signupLoading ? "Saving…" : "Complete signup"}
-            </button>
-          </form>
         </div>
       </div>
     );

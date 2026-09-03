@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const cron = require('node-cron');
 
-const { loginHandler, authMiddleware } = require('./auth');
+const { router: staffAuthRouter } = require('./routes/staff-auth');
 const otpRouter = require('./routes/otp');
 const { syncEvents } = require('./jobs/syncEvents');
 
@@ -44,7 +44,7 @@ app.get('/sync-status', (req, res) => {
 const baseRouter = express.Router();
 
 // auth
-baseRouter.post('/auth/login', loginHandler);
+baseRouter.use('/auth', staffAuthRouter);
 baseRouter.use('/auth', otpRouter);
 
 // mount routers

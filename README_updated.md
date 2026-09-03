@@ -13,8 +13,8 @@ Implemented here:
 - Server-side Azure `HEAD`/`GetProperties` validation.
 - Permanent public Azure URL generation for the participant repository's
   `ticket_payments.s3_url` column.
-- Shared staff JWT validation.
-- Required volunteer signup in the `verification` table.
+- Backend-issued staff JWT authentication with an approved-email signup allowlist.
+- Volunteer accounts stored in the `verification` table.
 - Volunteer queue, debounced search, status filter, payment detail, PDF
   display, and decision UI.
 - Transactional `Accepted`/`Rejected` decisions with a verification log.
@@ -152,21 +152,19 @@ the returned `public_url`.
 The upload endpoints do not write `ticket_payments.s3_url`; that column is
 written by the participant repository's API.
 
-### Volunteer receipt review
+### Staff authentication
 
-All review endpoints require the shared staff access JWT and a completed
-signup in `verification`.
+The backend issues the staff access token. Signup is sessionless and is
+allowed only for emails listed in
+`backend/config/approvedVolunteerEmails.json` (a JSON array of email
+strings). The user supplies their name, optional department, and real
+password; the backend stores only the bcrypt password hash in `verification`,
+generates the `volunteer_id`, and returns the access token.
 
 ```text
-GET   /receipt-review/volunteers/me
-POST  /receipt-review/volunteers/signup
-GET   /receipt-review/submissions
-GET   /receipt-review/submissions/:ticketId
-PATCH /receipt-review/submissions/:ticketId/decision
+POST /auth/signup
+POST /auth/login
 ```
-
-`GET /volunteers/me` is available after JWT authentication before signup so
-the UI can determine whether to show the signup form.
 
 Signup request:
 
@@ -179,10 +177,24 @@ Signup request:
 }
 ```
 
-The backend ignores any client-supplied volunteer ID. It extracts the UUID
-from the JWT subject `staff:<uuid>` and inserts that UUID into
-`verification.volunteer_id`. The password is stored as a bcrypt hash; the
-shared staff JWT remains the authorization mechanism for these endpoints.
+Both successful signup and login return a backend-issued access token. The
+token subject is `staff:<verification.volunteer_id>`.
+
+### Volunteer receipt review
+
+All review endpoints require a backend-issued staff access JWT and a matching
+account in `verification`.
+
+```text
+GET   /receipt-review/volunteers/me
+GET   /receipt-review/submissions
+GET   /receipt-review/submissions/:ticketId
+PATCH /receipt-review/submissions/:ticketId/decision
+```
+
+`GET /volunteers/me` returns the account represented by the JWT. Signup is
+handled at `/auth/signup`, before a token exists; there is no second signup
+flow inside the receipt-review page.
 
 List query parameters:
 
@@ -234,7 +246,7 @@ The review middleware validates the agreed staff access token:
   "email": "volunteer@ssn.edu.in",
   "primary_role": "volunteer",
   "roles": ["volunteer", "receipt_read_write"],
-  "permissions": ["receipts:read", "receipts:review"],
+  "permissions": ["receipts:read", "receipts:review", "registrations:onspot:create"],
   "department_ids": [],
   "event_ids": [],
   "iat": 1788336000,
@@ -243,10 +255,12 @@ The review middleware validates the agreed staff access token:
 }
 ```
 
-The backend verifies the signature using `JWT_PUBLIC_KEY`, issuer, audience,
-algorithm, time claims, `token_type`, the `staff:<uuid>` subject format, and a
-non-empty roles array. Receipt access is derived from the presence of a staff
-role; the token's permission list is not used to grant access.
+The backend signs with RS256 using `JWT_PRIVATE_KEY`. It verifies its own
+tokens with `JWT_PUBLIC_KEY` when supplied, or derives the public key from the
+private key. It validates issuer, audience, algorithm, time claims,
+`token_type`, the `staff:<uuid>` subject format, and a non-empty roles array.
+Receipt access is derived from the presence of a staff role; the token's
+permission list is not used to grant access.
 
 ## Configuration
 
@@ -254,7 +268,22 @@ Required backend environment variables:
 
 ```text
 DATABASE_URL
-JWT_PUBLIC_KEY                 # PEM; literal \n is accepted in an env value
+JWT_PRIVATE_KEY                # RSA PEM; literal \n is accepted in an env value
+```
+
+Optional public-key configuration:
+
+```text
+JWT_PUBLIC_KEY                 # RSA PEM; derived from JWT_PRIVATE_KEY if omitted
+```
+
+Staff JWT settings:
+
+```text
+JWT_ISSUER                     # defaults to invente-auth
+JWT_AUDIENCES                  # comma-separated; defaults to both agreed audiences
+JWT_ACCESS_TTL_SECONDS         # defaults to 900; allowed range 60–86400
+APPROVED_VOLUNTEER_EMAILS_FILE # optional path override for the JSON allowlist
 ```
 
 Azure can be configured with either a connection string or account details:

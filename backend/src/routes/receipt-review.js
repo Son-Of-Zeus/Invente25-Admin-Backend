@@ -1,5 +1,4 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 const db = require('../db');
@@ -49,10 +48,6 @@ function sendDatabaseError(res, error) {
 
   console.error('Receipt review database error:', error);
   return res.status(500).json({ error: 'server error' });
-}
-
-function normalizedEmail(value) {
-  return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
 function getPageValue(value, fallback, minimum, maximum) {
@@ -126,46 +121,6 @@ async function requireRegisteredVolunteer(req, res, next) {
   }
 }
 
-function validateSignupBody(req) {
-  const { email, password, name, dept } = req.body || {};
-  const normalizedBodyEmail = normalizedEmail(email);
-  const tokenEmail = normalizedEmail(req.staff.email);
-
-  if (!normalizedBodyEmail || !password || typeof password !== 'string' || !name || typeof name !== 'string') {
-    throw httpError(400, 'INVALID_SIGNUP', 'email, password, and name are required');
-  }
-
-  if (normalizedBodyEmail !== tokenEmail) {
-    throw httpError(403, 'EMAIL_MISMATCH', 'signup email must match the staff JWT email');
-  }
-
-  if (Buffer.byteLength(password, 'utf8') > 72) {
-    throw httpError(400, 'PASSWORD_TOO_LONG', 'password must be at most 72 bytes');
-  }
-
-  const trimmedName = name.trim();
-  if (!trimmedName || trimmedName.length > 255) {
-    throw httpError(400, 'INVALID_NAME', 'name must be between 1 and 255 characters');
-  }
-
-  let normalizedDept = null;
-  if (dept !== undefined && dept !== null) {
-    if (typeof dept !== 'string' || dept.trim().length > 100) {
-      throw httpError(400, 'INVALID_DEPARTMENT', 'dept must be at most 100 characters');
-    }
-    normalizedDept = dept.trim() || null;
-  }
-
-  return {
-    email: normalizedBodyEmail,
-    password,
-    name: trimmedName,
-    dept: normalizedDept,
-  };
-}
-
-// This endpoint is intentionally available before signup so the UI can show
-// the required registration form without inventing a second authentication flow.
 router.get('/volunteers/me', async (req, res) => {
   try {
     const volunteer = await findVolunteerRegistration(req.staff.volunteerId);
@@ -175,24 +130,6 @@ router.get('/volunteers/me', async (req, res) => {
       registered: Boolean(volunteer),
       volunteer,
     });
-  } catch (error) {
-    return sendDatabaseError(res, error);
-  }
-});
-
-router.post('/volunteers/signup', async (req, res) => {
-  try {
-    const values = validateSignupBody(req);
-    const passwordHash = await bcrypt.hash(values.password, 12);
-    const result = await db.query(
-      `INSERT INTO public.verification
-         (volunteer_id, email, password_hash, dept, name)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING volunteer_id, email, dept, name, created_at, updated_at`,
-      [req.staff.volunteerId, values.email, passwordHash, values.dept, values.name],
-    );
-
-    return res.status(201).json({ registered: true, volunteer: result.rows[0] });
   } catch (error) {
     return sendDatabaseError(res, error);
   }
