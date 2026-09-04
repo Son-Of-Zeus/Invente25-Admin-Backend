@@ -271,6 +271,16 @@ DATABASE_URL
 JWT_PRIVATE_KEY                # RSA PEM; literal \n is accepted in an env value
 ```
 
+For local development and Docker Compose, put these values in
+backend/.env (copy backend/.env.example first). Compose loads that file
+directly; do not rely on ${JWT_PRIVATE_KEY} interpolation from a separate
+root .env. Generate a development key with:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 |
+  awk 'NF { printf "%s\\n", $0 }'
+```
+
 Optional public-key configuration:
 
 ```text
