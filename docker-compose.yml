@@ -1,29 +1,12 @@
 services:
   backend:
-    build: ./backend
-    # image: irfanakthar/invente25-admin-backend:v2
+    image: vp2178/invente26-backend:latest
+    container_name: invente26-admin-backend
+    restart: always
     env_file:
       - ./backend/.env
     environment:
       - PORT=4000
-      # Inside Compose, PostgreSQL is reached through the service name.
-      # The host-side 5499 mapping is only for tools running on the host.
-      - PAYMENT_VERIF_URL=http://payment-verif.local/verify-cash
-      - PAYMENT_VERIF_API_KEY=devapikey
-      - SYNC_EVENTS_ENABLED=true
-      - SYNC_EVENTS_CRON=*/2 * * * * # every 2 minutes and once per startup
-      - EVENTS_API_URL=https://ssnsnucinvente.com/api/events?pagination[pageSize]=140
-      - PAYMENT_SERVICE_URL=http://localhost:8080/api/payment
-      - RECEIPT_SERVICE_URL=http://localhost:8080/restricted/receipt
-      - MASTER_PW=itsmeirfan
-      - TECH_PASS_PRICE=300
-      - NON_TECH_DEFAULT_PRICE=300
-      - WORKSHOP_PRICE=300
-      - PAYMENT_SERVICE_SECRET=rjkgsigirgrlgrl123y4t5u6i7o8p0d
-      - MAIL_SERVICE_SECRET=rjkgsigirgrlgrl123y4t5u6i7o8p0d
-      - GOOGLE_APPLICATION_CREDENTIALS=credentials.json
-      - MASTER_ADMIN_EMAILS=irfanakthar@ssn.edu.in
-      - MAIL_SERVICE_URL=http://localhost:8080/api/sendOTP
     ports:
       - "4000:4000"
     # volumes: 
