@@ -1,5 +1,10 @@
 // index.js
 require('dotenv').config();
+
+// The participant schema stores timestamp-without-timezone values as IST.
+// Set Node's timezone before loading routes so node-postgres parses them as IST.
+process.env.TZ = process.env.TZ || 'Asia/Kolkata';
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');

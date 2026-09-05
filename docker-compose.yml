@@ -6,6 +6,7 @@ services:
       - ./backend/.env
     environment:
       - PORT=4000
+      - TZ=Asia/Kolkata
     ports:
       - "4000:4000"
     # volumes: 

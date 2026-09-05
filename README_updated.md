@@ -298,6 +298,7 @@ Staff JWT settings:
 JWT_ISSUER                     # defaults to invente-auth
 JWT_AUDIENCES                  # comma-separated; defaults to both agreed audiences
 JWT_ACCESS_TTL_SECONDS         # defaults to 900; allowed range 60–86400
+TZ                             # backend timezone; defaults to Asia/Kolkata
 APPROVED_VOLUNTEER_EMAILS      # required comma-separated volunteer signup allowlist
 ```
 
