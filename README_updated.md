@@ -155,11 +155,16 @@ written by the participant repository's API.
 ### Staff authentication
 
 The backend issues the staff access token. Signup is sessionless and is
-allowed only for emails listed in
-`backend/config/approvedVolunteerEmails.json` (a JSON array of email
-strings). The user supplies their name, optional department, and real
+allowed only for emails listed in the required `APPROVED_VOLUNTEER_EMAILS`
+environment variable. Set it to a comma-separated list of email strings; add
+or remove addresses in the environment and restart the backend for the change
+to take effect. The user supplies their name, optional department, and real
 password; the backend stores only the bcrypt password hash in `verification`,
 generates the `volunteer_id`, and returns the access token.
+
+```text
+APPROVED_VOLUNTEER_EMAILS=volunteer1@ssn.edu.in,volunteer2@ssn.edu.in
+```
 
 ```text
 POST /auth/signup
@@ -293,7 +298,7 @@ Staff JWT settings:
 JWT_ISSUER                     # defaults to invente-auth
 JWT_AUDIENCES                  # comma-separated; defaults to both agreed audiences
 JWT_ACCESS_TTL_SECONDS         # defaults to 900; allowed range 60–86400
-APPROVED_VOLUNTEER_EMAILS_FILE # optional path override for the JSON allowlist
+APPROVED_VOLUNTEER_EMAILS      # required comma-separated volunteer signup allowlist
 ```
 
 Azure can be configured with either a connection string or account details:

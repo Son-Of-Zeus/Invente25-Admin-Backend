@@ -1,8 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const jwt = require('jsonwebtoken');
 
 const db = require('../db');
@@ -13,8 +11,6 @@ const JWT_ALGORITHM = 'RS256';
 const DEFAULT_ISSUER = 'invente-auth';
 const DEFAULT_AUDIENCES = ['invente-admin-api', 'invente-review-api'];
 const DEFAULT_ACCESS_TTL_SECONDS = 900;
-const APPROVED_EMAILS_FILE = process.env.APPROVED_VOLUNTEER_EMAILS_FILE
-  || path.resolve(__dirname, '../../config/approvedVolunteerEmails.json');
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function httpError(status, code, message) {
@@ -66,26 +62,22 @@ function configuredAccessTtl() {
   return ttl;
 }
 
-function readApprovedVolunteerEmails() {
-  let contents;
-  try {
-    contents = fs.readFileSync(APPROVED_EMAILS_FILE, 'utf8');
-  } catch (error) {
-    throw configurationError('approved volunteer email file is unavailable');
+function configuredApprovedVolunteerEmails() {
+  const configured = process.env.APPROVED_VOLUNTEER_EMAILS;
+  if (typeof configured !== 'string' || configured.trim() === '') {
+    throw configurationError('APPROVED_VOLUNTEER_EMAILS is not configured');
   }
 
-  let values;
-  try {
-    values = JSON.parse(contents);
-  } catch (error) {
-    throw configurationError('approved volunteer email file is not valid JSON');
+  const values = configured
+    .split(/[\n,]/)
+    .map(normalizedEmail)
+    .filter(Boolean);
+
+  if (values.length === 0 || values.some(email => !EMAIL_PATTERN.test(email) || email.length > 255)) {
+    throw configurationError('APPROVED_VOLUNTEER_EMAILS contains an invalid email');
   }
 
-  if (!Array.isArray(values)) {
-    throw configurationError('approved volunteer email file must contain a JSON array');
-  }
-
-  return new Set(values.map(normalizedEmail).filter(Boolean));
+  return new Set(values);
 }
 
 function validateEmail(email) {
@@ -213,7 +205,7 @@ function handleAuthError(res, error) {
 async function signupHandler(req, res) {
   try {
     const values = validateProfile(req.body || {});
-    const approvedEmails = readApprovedVolunteerEmails();
+    const approvedEmails = configuredApprovedVolunteerEmails();
 
     if (!approvedEmails.has(values.email)) {
       return res.status(403).json({ error: 'this email is not approved for volunteer signup' });
