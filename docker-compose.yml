@@ -45,31 +45,7 @@ services:
     networks:
       - default
       - payment_backend_network
-
-  frontend:
-    build: ./frontend
-    #image: irfanakthar/invente25-admin-frontend:v1
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-    environment:
-      - VITE_API_URL=http://localhost:4000
-      - VITE_TECH_PASS_PRICE=300
-      - VITE_WORKSHOP_PRICE=300
-      - VITE_NON_TECH_DEFAULT_PRICE=300
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      
 volumes:
   db_data:
 networks:
