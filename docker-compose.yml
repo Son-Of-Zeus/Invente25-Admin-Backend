@@ -2,7 +2,6 @@ services:
   backend:
     build: ./backend
     container_name: invente26-admin-backend
-    restart: always
     env_file:
       - ./backend/.env
     environment:
