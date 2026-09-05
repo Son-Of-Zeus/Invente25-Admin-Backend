@@ -1,6 +1,6 @@
 services:
   backend:
-    image: vp2178/invente26-backend:latest
+    build: ./backend
     container_name: invente26-admin-backend
     restart: always
     env_file:
