@@ -108,8 +108,8 @@ Request:
 }
 ```
 
-The ticket must exist in `ticket_payments` and currently be
-`PendingPayment`. The backend returns:
+The ticket must exist in `ticket_payments` and currently be `PendingPayment` or
+`NotVerified`. The backend returns:
 
 ```json
 {
@@ -297,7 +297,7 @@ Staff JWT settings:
 ```text
 JWT_ISSUER                     # defaults to invente-auth
 JWT_AUDIENCES                  # comma-separated; defaults to both agreed audiences
-JWT_ACCESS_TTL_SECONDS         # defaults to 900; allowed range 60–86400
+JWT_ACCESS_TTL_SECONDS         # defaults to 864000 (10 days); allowed range 60–864000
 TZ                             # backend timezone; defaults to Asia/Kolkata
 APPROVED_VOLUNTEER_EMAILS      # required comma-separated volunteer signup allowlist
 ```

@@ -12,6 +12,7 @@ const {
 const router = express.Router();
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const RECEIPT_UPLOADABLE_STATUSES = ['PendingPayment', 'NotVerified'];
 
 function isAzureConfigured() {
   return Boolean(process.env.AZURE_UPLOAD_TOKEN_SECRET && process.env.AZURE_STORAGE_CONTAINER_NAME);
@@ -107,9 +108,9 @@ router.post('/receipt-upload-url', requireFrontendOrigin, async (req, res) => {
       return res.status(404).json({ error: 'ticket payment not found' });
     }
 
-    if (payment.rows[0].status !== 'PendingPayment') {
+    if (!RECEIPT_UPLOADABLE_STATUSES.includes(payment.rows[0].status)) {
       return res.status(409).json({
-        error: 'a receipt upload can only be started for a PendingPayment ticket',
+        error: 'a receipt upload can only be started for a PendingPayment or NotVerified ticket',
         current_status: payment.rows[0].status,
       });
     }

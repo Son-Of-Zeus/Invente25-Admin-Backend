@@ -10,7 +10,7 @@ const router = express.Router();
 const JWT_ALGORITHM = 'RS256';
 const DEFAULT_ISSUER = 'invente-auth';
 const DEFAULT_AUDIENCES = ['invente-admin-api', 'invente-review-api'];
-const DEFAULT_ACCESS_TTL_SECONDS = 900;
+const DEFAULT_ACCESS_TTL_SECONDS = 10 * 24 * 60 * 60;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function httpError(status, code, message) {
@@ -56,8 +56,8 @@ function configuredAccessTtl() {
   if (value === undefined) return DEFAULT_ACCESS_TTL_SECONDS;
 
   const ttl = Number(value);
-  if (!Number.isInteger(ttl) || ttl < 60 || ttl > 86400) {
-    throw configurationError('JWT_ACCESS_TTL_SECONDS must be between 60 and 86400');
+  if (!Number.isInteger(ttl) || ttl < 60 || ttl > DEFAULT_ACCESS_TTL_SECONDS) {
+    throw configurationError(`JWT_ACCESS_TTL_SECONDS must be between 60 and ${DEFAULT_ACCESS_TTL_SECONDS}`);
   }
   return ttl;
 }
